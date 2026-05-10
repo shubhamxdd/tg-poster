@@ -22,8 +22,9 @@ export const handleTelegramWebhook = async (req, res) => {
     console.log('--- New Update from Telegram ---');
     console.log(JSON.stringify(req.body, null, 2));
 
-    const { message, channel_post } = req.body;
-    const msg = message || channel_post;
+    // Support both regular messages and edited ones
+    const { message, channel_post, edited_message, edited_channel_post } = req.body;
+    const msg = message || channel_post || edited_message || edited_channel_post;
 
     if (!msg) {
       return res.status(200).send('No message content');
@@ -37,44 +38,53 @@ export const handleTelegramWebhook = async (req, res) => {
     // 1. Parse message text with AI
     const movieData = await parseTelegramMessage(text);
 
-    // 2. Resolve Extra Details from TMDB
-    console.log(`[Webhook] Fetching details from TMDB for: ${movieData.title}`);
-    const tmdbDetails = await fetchFullDetailsFromTMDB(movieData.title, movieData.type, movieData.year);
+    // 2. Check for existing entry (either by message ID or by Title+Year)
+    let existingMovie = await Movie.findOne({ telegramMsgId: msgId });
+    
+    if (!existingMovie && movieData.title) {
+      // Search by title and year (if year exists) to prevent duplicates across different messages
+      const query = { title: movieData.title };
+      if (movieData.year) query.year = movieData.year;
+      existingMovie = await Movie.findOne(query);
+    }
 
-    // 3. Resolve Poster URL (Telegram has priority if attached)
+    // 3. Resolve Extra Details from TMDB (Only if it's a new movie or title changed)
+    let tmdbDetails = {};
+    if (!existingMovie || existingMovie.title !== movieData.title) {
+      console.log(`[Webhook] Fetching details from TMDB for: ${movieData.title}`);
+      tmdbDetails = await fetchFullDetailsFromTMDB(movieData.title, movieData.type, movieData.year);
+    }
+
+    // 4. Resolve Poster URL
     let posterUrl = movieData.poster;
-
     if (!posterUrl && msg.photo && msg.photo.length > 0) {
       const largestPhoto = msg.photo[msg.photo.length - 1];
       posterUrl = await getTelegramFileUrl(largestPhoto.file_id);
     }
-
-    // If still no poster from TG, use TMDB
     if (!posterUrl || posterUrl === '') {
-      posterUrl = tmdbDetails?.poster || '';
+      posterUrl = tmdbDetails?.poster || existingMovie?.poster || '';
     }
 
-    // 4. Merge Data (AI data from message takes priority for specific fields)
-    const mergedData = {
+    // 5. Merge and Save/Update
+    const finalData = {
       ...tmdbDetails,
-      ...movieData, // Overwrite with AI data if present in message
+      ...movieData, // AI data from message takes priority
       poster: posterUrl,
       rawMessage: text,
       telegramMsgId: msgId,
     };
 
-    // Special logic: If AI returned 'Unknown' or 'N/A' for fields, use TMDB instead
-    if (movieData.language === 'Unknown' && tmdbDetails?.language) mergedData.language = tmdbDetails.language;
-    if (movieData.director === 'N/A' && tmdbDetails?.director) mergedData.director = tmdbDetails.director;
-    if (movieData.genre.length === 0 && tmdbDetails?.genre) mergedData.genre = tmdbDetails.genre;
-    if (!movieData.year && tmdbDetails?.year) mergedData.year = tmdbDetails.year;
+    if (existingMovie) {
+      console.log(`[Webhook] Updating existing entry: ${existingMovie.title}`);
+      await Movie.findByIdAndUpdate(existingMovie._id, finalData, { new: true });
+      res.status(200).json({ success: true, action: 'updated', movie: existingMovie });
+    } else {
+      console.log(`[Webhook] Creating new entry: ${movieData.title}`);
+      const newMovie = new Movie(finalData);
+      await newMovie.save();
+      res.status(200).json({ success: true, action: 'created', movie: newMovie });
+    }
 
-    // 5. Save to Database
-    const newMovie = new Movie(mergedData);
-    await newMovie.save();
-
-    console.log(`Saved movie: ${newMovie.title} with full metadata.`);
-    res.status(200).json({ success: true, movie: newMovie });
   } catch (error) {
     console.error('Webhook Error:', error);
     res.status(200).json({ success: false, error: error.message });

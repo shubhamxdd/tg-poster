@@ -6,12 +6,14 @@ A modern, fully automated movie and series catalog website that listens to a pri
 
 ## 🚀 Features
 
--   **🤖 AI-Powered Parsing:** Uses OpenRouter (Gemini/Claude) to extract structured data from unstructured Telegram messages.
--   **📱 Telegram Webhook:** Real-time synchronization with any private Telegram channel.
--   **🖼️ Smart Poster Handling:** Automatically fetches high-resolution posters from TMDB if not provided in the message.
--   **✨ Rich Metadata:** Automatically pulls Cast, Director, Ratings, and Runtimes from TMDB.
--   **📦 Season & Quality Organization:** Intelligently groups multiple links (e.g., Season 1, Season 2, 1080p, 720p) with descriptive labels.
--   **🎨 Modern UI:** Built with Vite, React, Tailwind CSS, and Shadcn UI for a premium, responsive experience.
+-   **🤖 AI-Powered Parsing:** Uses OpenRouter (Gemini/Claude) to extract structured data (titles, seasons, qualities, sizes) from unstructured Telegram messages.
+-   **📱 Telegram Webhook (Edits Support):** Real-time synchronization. Supports message edits—if you update a post in Telegram, it updates on the site instantly.
+-   **🔄 Smart Deduplication:** Automatically detects if a show already exists (via Title + Year) and updates the existing entry instead of creating duplicates.
+-   **📦 Tabbed Season Organization:** Intelligently groups download links into interactive tabs by Season (e.g., Season 1, Season 2).
+-   **💾 Detailed File Metadata:** Displays full filenames, file sizes, resolutions (1080p/4k), and audio languages for every link.
+-   **🖼️ Smart Poster Handling:** Fetches high-resolution posters from TMDB or uses directly attached Telegram photos.
+-   **✨ Full Metadata Enrichment:** Automatically pulls Top Cast (with photos), Directors, Ratings, Runtimes, and Status from TMDB.
+-   **🎨 Premium UI:** Built with Vite, React 19, Tailwind CSS, and Shadcn UI for a modern, dark-themed experience.
 
 ## 🛠️ Tech Stack
 
@@ -25,8 +27,8 @@ A modern, fully automated movie and series catalog website that listens to a pri
 -   Node.js (v18+)
 -   MongoDB (Local or Atlas)
 -   Telegram Bot Token (from [@BotFather](https://t.me/botfather))
--   OpenRouter API Key
--   TMDB API Key
+-   OpenRouter API Key (for Gemini/Claude parsing)
+-   TMDB API Key (for metadata and posters)
 
 ## 📥 Installation
 
@@ -85,19 +87,19 @@ WEBHOOK_SECRET=your_random_secret_string
 ```text
 ├── backend/
 │   ├── config/          # Database connection
-│   ├── controllers/     # Webhook & Movie logic
-│   ├── models/          # Mongoose Schema
+│   ├── controllers/     # Webhook logic (Updates & Deduplication)
+│   ├── models/          # Mongoose Schema (Structured Links & Cast)
 │   ├── routes/          # Express API routes
-│   ├── services/        # AI Parser & TMDB integration
+│   ├── services/        # AI Parser (Vercel AI SDK) & TMDB integration
 │   └── server.js        # Entry point
 ├── client/              # Vite + React Frontend
 │   ├── src/
 │   │   ├── api/         # Axios API calls
-│   │   ├── components/  # Shadcn & Custom UI
-│   │   ├── pages/       # Home & Detail pages
+│   │   ├── components/  # Shadcn UI & Custom Navbar
+│   │   ├── pages/       # Home & Season-Tabbed Detail pages
 │   │   └── types/       # TypeScript definitions
 ├── PLAN.md              # Original project roadmap
-└── README.md            # You are here
+└── README.md            # Updated Documentation
 ```
 
 ## 🤝 Contributing
