@@ -1,0 +1,39 @@
+export type Link = {
+  label: string;
+  url: string;
+};
+
+export type Cast = {
+  name: string;
+  character: string;
+  profile_path: string | null;
+};
+
+export type Movie = {
+  _id: string;
+  title: string;
+  type: 'movie' | 'series' | 'anime';
+  links: Link[];
+  link: string; // fallback
+  poster: string;
+  genre: string[];
+  year: number | null;
+  language: string;
+  description: string;
+  rating?: string;
+  runtime?: string;
+  status?: string;
+  country?: string;
+  director?: string;
+  cast?: Cast[];
+  telegramMsgId: number;
+  addedAt: string;
+};
+
+export type MovieResponse = {
+  movies: Movie[];
+  totalPages: number;
+  currentPage: number;
+};
+
+export const TYPES_LOADED = true;

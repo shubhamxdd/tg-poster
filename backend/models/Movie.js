@@ -14,6 +14,10 @@ const movieSchema = new mongoose.Schema({
     type: String,
     required: true,
   },
+  links: [{
+    label: { type: String, default: 'Download' },
+    url: { type: String, required: true }
+  }],
   poster: {
     type: String,
     default: '',
@@ -28,12 +32,22 @@ const movieSchema = new mongoose.Schema({
   },
   language: {
     type: String,
-    default: '',
+    default: 'Unknown',
   },
   description: {
     type: String,
     default: '',
   },
+  rating: String,
+  runtime: String,
+  status: String,
+  country: String,
+  director: String,
+  cast: [{
+    name: String,
+    character: String,
+    profile_path: String
+  }],
   rawMessage: {
     type: String,
     default: '',
@@ -49,6 +63,17 @@ const movieSchema = new mongoose.Schema({
   },
 }, {
   timestamps: true,
+  toJSON: {
+    transform: (doc, ret) => {
+      if (ret.links && Array.isArray(ret.links)) {
+        ret.links = ret.links.map(l => {
+          if (typeof l === 'string') return { label: 'Download', url: l };
+          return l;
+        });
+      }
+      return ret;
+    }
+  }
 });
 
 const Movie = mongoose.model('Movie', movieSchema);
