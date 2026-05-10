@@ -46,12 +46,16 @@ export const fetchFullDetailsFromTMDB = async (title, type, year) => {
     const details = detailRes.data;
     const credits = creditRes.data;
 
+    const releaseDate = details.release_date || details.first_air_date;
+    const yearFromTMDB = releaseDate ? new Date(releaseDate).getFullYear() : null;
+
     // Extract relevant info
     return {
       poster: details.poster_path ? `${IMAGE_BASE_URL}${details.poster_path}` : null,
       rating: details.vote_average ? details.vote_average.toFixed(1) : null,
       runtime: details.runtime || (details.episode_run_time ? details.episode_run_time[0] : null),
       status: details.status,
+      year: yearFromTMDB,
       genre: details.genres?.map(g => g.name) || [],
       country: details.origin_country ? details.origin_country[0] : (details.production_countries ? details.production_countries[0]?.name : null),
       director: tmdbType === 'movie' 

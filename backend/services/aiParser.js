@@ -22,9 +22,15 @@ Extract every possible detail from the Telegram message provided below.
 
 GUIDELINES:
 1. Title: Clean it (remove dots, years, resolution tags).
-2. Links: Identify ALL download/streaming links. Create a descriptive label for each by looking at the surrounding text or the filename (e.g., "Season 1 [1080p]", "Hindi Dubbed", "Direct GDrive").
-3. Metadata: Look for "Director", "Language", "Year", "Status", and "Genre" keywords in the message.
-4. If a piece of information is not explicitly in the message, try to infer it from the filename/tags, otherwise return null.
+2. Links: Identify ALL download/streaming links. 
+   - Extract the FULL filename line associated with the link.
+   - Extract "quality" (e.g. 1080p, 4k).
+   - Extract "size" (e.g. 1.2GB, 500MB).
+   - Extract "language" (e.g. Hindi, English).
+   - Extract "season" number if applicable.
+   - Create a "label" like "Season 1 [1080p]" or "Movie [Hindi]".
+3. Metadata: Look for "Director", "Language", "Year", "Status", and "Genre".
+4. Infer missing info from filenames/tags.
 
 Return ONLY a valid JSON object.
 
@@ -33,15 +39,22 @@ Required JSON Structure:
   "title": "Cleaned Name",
   "type": "movie" | "series" | "anime",
   "links": [
-    { "label": "Descriptive Label (e.g. S01 1080p)", "url": "url1" },
-    { "label": "Descriptive Label (e.g. S02 720p)", "url": "url2" }
+    { 
+      "label": "S01 [1080p]", 
+      "url": "url1", 
+      "quality": "1080p", 
+      "size": "19.76GB", 
+      "language": "Hindi", 
+      "season": 1,
+      "filename": "My.Dress-Up.Darling.S01.1080p.CR.WEB-DL..."
+    }
   ],
-  "genre": ["Genre1", "Genre2"],
+  "genre": ["Genre1"],
   "year": 2024,
-  "language": "English / Hindi / Dual Audio",
+  "language": "Language",
   "director": "Director Name",
-  "status": "Ongoing / Ended / Released",
-  "description": "Short summary or plot if mentioned"
+  "status": "Ongoing / Ended",
+  "description": "Summary"
 }
 
 Telegram Message:
@@ -62,15 +75,26 @@ Telegram Message:
 
     const movieData = JSON.parse(cleanedJson.substring(startIdx, endIdx + 1));
 
-    // Ensure links are objects { label, url } and capture quality/season info
+    // Cleanup links
     let formattedLinks = [];
     if (Array.isArray(movieData.links)) {
-      formattedLinks = movieData.links.map(l => {
-        if (typeof l === 'string') return { label: 'Download', url: l };
-        return { label: l.label || 'Download', url: l.url || '' };
-      }).filter(l => l.url);
-    } else if (movieData.link) {
-      formattedLinks = [{ label: 'Download', url: movieData.link }];
+      formattedLinks = movieData.links.map(l => ({
+        label: l.label || 'Download',
+        url: l.url || (typeof l === 'string' ? l : ''),
+        quality: l.quality || '',
+        size: l.size || '',
+        language: l.language || '',
+        season: Number(l.season) || null,
+        filename: l.filename || ''
+      })).filter(l => l.url);
+    }
+
+    // Clean year
+    let rawYear = movieData.year;
+    let cleanedYear = null;
+    if (rawYear) {
+      const yearMatch = String(rawYear).match(/\d{4}/);
+      if (yearMatch) cleanedYear = Number(yearMatch[0]);
     }
 
     return {
@@ -79,7 +103,7 @@ Telegram Message:
       links: formattedLinks,
       link: formattedLinks[0]?.url || '', 
       genre: Array.isArray(movieData.genre) ? movieData.genre : [],
-      year: Number(movieData.year) || null,
+      year: cleanedYear,
       language: movieData.language || 'Unknown',
       director: movieData.director || 'N/A',
       status: movieData.status || 'Released',

@@ -16,7 +16,12 @@ const movieSchema = new mongoose.Schema({
   },
   links: [{
     label: { type: String, default: 'Download' },
-    url: { type: String, required: true }
+    url: { type: String, required: true },
+    quality: String,      // e.g. "1080p", "2160p"
+    size: String,         // e.g. "19.76GB"
+    language: String,     // e.g. "Hindi", "English"
+    season: Number,       // e.g. 1, 2
+    filename: String      // The full raw filename line
   }],
   poster: {
     type: String,

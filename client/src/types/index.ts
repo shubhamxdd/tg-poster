@@ -1,6 +1,11 @@
 export type Link = {
   label: string;
   url: string;
+  quality?: string;
+  size?: string;
+  language?: string;
+  season?: number | null;
+  filename?: string;
 };
 
 export type Cast = {

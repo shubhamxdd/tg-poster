@@ -1,10 +1,11 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { useParams } from "react-router-dom";
 import { movieApi } from "@/api/movieApi";
-import type { Movie } from "@/types/index";
+import type { Movie, Link as MovieLink } from "@/types/index";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Play, Heart, Share2, Download, Info, Clock, MapPin, Film } from "lucide-react";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Play, Heart, Share2, Download, Info, Clock, MapPin, Film, HardDrive, Languages } from "lucide-react";
 
 export default function MovieDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -27,6 +28,22 @@ export default function MovieDetailPage() {
     fetchMovie();
   }, [id]);
 
+  // Group links by season
+  const seasonGroups = useMemo(() => {
+    if (!movie || !movie.links) return {};
+    const groups: Record<string, MovieLink[]> = {};
+    
+    movie.links.forEach(link => {
+      const seasonLabel = link.season ? `Season ${link.season}` : "General";
+      if (!groups[seasonLabel]) groups[seasonLabel] = [];
+      groups[seasonLabel].push(link);
+    });
+
+    return groups;
+  }, [movie]);
+
+  const seasonNames = Object.keys(seasonGroups);
+
   if (loading) return <div className="pt-24 text-center">Loading...</div>;
   if (!movie) return <div className="pt-24 text-center">Movie not found</div>;
 
@@ -45,7 +62,7 @@ export default function MovieDetailPage() {
         </div>
 
         {/* Hero Content */}
-        <div className="container relative z-10 h-full flex flex-col justify-end pb-12 gap-6">
+        <div className="container relative z-10 h-full flex flex-col justify-end pb-12 gap-6 px-6 md:px-12 lg:px-24">
           <div className="flex flex-wrap gap-3 items-center mb-2">
             <Badge className="bg-orange-500 text-white border-0 text-sm py-1">★ {movie.rating || 'N/A'}</Badge>
             <span className="flex items-center gap-1 text-sm font-medium text-white/70">
@@ -82,9 +99,94 @@ export default function MovieDetailPage() {
       </div>
 
       {/* Info & Downloads Section */}
-      <div className="container py-12 grid lg:grid-cols-3 gap-16">
+      <div className="container py-12 grid lg:grid-cols-3 gap-16 px-6 md:px-12 lg:px-24">
         <div className="lg:col-span-2 space-y-16">
           
+          {/* Downloads with Tabs */}
+          <section>
+            <h2 className="text-3xl font-bold mb-8 flex items-center gap-4">
+              DOWNLOADS <div className="h-px flex-1 bg-white/10" />
+            </h2>
+            
+            <div className="bg-orange-500/10 border border-orange-500/20 rounded-3xl p-8 flex flex-col md:flex-row items-center justify-between gap-8 mb-10">
+              <div className="flex items-center gap-6">
+                <div className="w-14 h-14 rounded-2xl bg-orange-500/20 flex items-center justify-center text-orange-500">
+                  <Info className="h-7 w-7" />
+                </div>
+                <div className="space-y-1">
+                  <p className="font-bold text-lg">Detailed Files</p>
+                  <p className="text-sm text-white/60">
+                    Switch between seasons and choose your preferred quality/language below.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {seasonNames.length > 0 ? (
+              <Tabs defaultValue={seasonNames[0]} className="w-full">
+                <TabsList className="bg-white/5 border border-white/10 p-1 mb-8">
+                  {seasonNames.map(name => (
+                    <TabsTrigger 
+                      key={name} 
+                      value={name}
+                      className="data-[state=active]:bg-orange-500 data-[state=active]:text-white font-bold"
+                    >
+                      {name}
+                    </TabsTrigger>
+                  ))}
+                </TabsList>
+                {seasonNames.map(name => (
+                  <TabsContent key={name} value={name} className="space-y-4">
+                    {seasonGroups[name].map((link, idx) => (
+                      <div key={idx} className="flex flex-col md:flex-row md:items-center justify-between p-6 rounded-2xl bg-white/5 border border-white/10 hover:bg-white/10 transition-all group gap-4">
+                        <div className="flex items-start gap-6 overflow-hidden">
+                           <div className="w-12 h-12 rounded-xl bg-orange-500/20 flex items-center justify-center text-orange-500 shrink-0 group-hover:scale-110 transition-transform">
+                             <Download className="h-6 w-6" />
+                           </div>
+                           <div className="overflow-hidden">
+                             <span className="font-bold text-lg block truncate" title={link.filename || link.label}>
+                               {link.label}
+                             </span>
+                             <p className="text-xs text-muted-foreground break-all line-clamp-1 italic mb-2">
+                               {link.filename || "Direct High Speed Link"}
+                             </p>
+                             <div className="flex flex-wrap gap-3 mt-1">
+                                {link.size && (
+                                  <span className="flex items-center gap-1 text-[10px] bg-white/5 px-2 py-1 rounded border border-white/10 font-bold uppercase tracking-wider text-white/60">
+                                    <HardDrive className="h-3 w-3" /> {link.size}
+                                  </span>
+                                )}
+                                {link.quality && (
+                                  <span className="flex items-center gap-1 text-[10px] bg-orange-500/10 px-2 py-1 rounded border border-orange-500/20 font-bold uppercase tracking-wider text-orange-500">
+                                    {link.quality}
+                                  </span>
+                                )}
+                                {link.language && (
+                                  <span className="flex items-center gap-1 text-[10px] bg-blue-500/10 px-2 py-1 rounded border border-blue-500/20 font-bold uppercase tracking-wider text-blue-400">
+                                    <Languages className="h-3 w-3" /> {link.language}
+                                  </span>
+                                )}
+                             </div>
+                           </div>
+                        </div>
+                        <Button 
+                          onClick={() => window.open(link.url, '_blank')}
+                          className="bg-orange-500 hover:bg-orange-600 text-white font-bold md:shrink-0 h-12 px-6"
+                        >
+                          DOWNLOAD NOW
+                        </Button>
+                      </div>
+                    ))}
+                  </TabsContent>
+                ))}
+              </Tabs>
+            ) : (
+              <div className="text-center p-12 bg-white/5 rounded-3xl border border-dashed border-white/10 text-muted-foreground">
+                No download links available yet.
+              </div>
+            )}
+          </section>
+
           {/* Cast Section */}
           {movie.cast && movie.cast.length > 0 && (
             <section>
@@ -108,59 +210,6 @@ export default function MovieDetailPage() {
               </div>
             </section>
           )}
-
-          {/* Downloads */}
-          <section>
-            <h2 className="text-3xl font-bold mb-8 flex items-center gap-4">
-              DOWNLOADS <div className="h-px flex-1 bg-white/10" />
-            </h2>
-            
-            <div className="bg-orange-500/10 border border-orange-500/20 rounded-3xl p-8 flex flex-col md:flex-row items-center justify-between gap-8 mb-10">
-              <div className="flex items-center gap-6">
-                <div className="w-14 h-14 rounded-2xl bg-orange-500/20 flex items-center justify-center text-orange-500">
-                  <Info className="h-7 w-7" />
-                </div>
-                <div className="space-y-1">
-                  <p className="font-bold text-lg">Missing a link?</p>
-                  <p className="text-sm text-white/60">
-                    Request custom quality or specific languages and our team will add it.
-                  </p>
-                </div>
-              </div>
-              <Button className="bg-orange-500 hover:bg-orange-600 text-white h-12 px-8 font-bold">
-                REQUEST LINK
-              </Button>
-            </div>
-
-            <div className="grid gap-4">
-              {movie.links && movie.links.length > 0 ? (
-                movie.links.map((link, idx) => (
-                  <div key={idx} className="flex items-center justify-between p-6 rounded-2xl bg-white/5 border border-white/10 hover:bg-white/10 transition-all group">
-                    <div className="flex items-center gap-6">
-                       <div className="w-12 h-12 rounded-xl bg-orange-500/20 flex items-center justify-center text-orange-500 group-hover:scale-110 transition-transform">
-                         <Download className="h-6 w-6" />
-                       </div>
-                       <div>
-                         <span className="font-bold text-lg">{link.label}</span>
-                         <p className="text-xs text-muted-foreground uppercase tracking-widest">Available in High Quality</p>
-                       </div>
-                    </div>
-                    <Button 
-                      onClick={() => window.open(link.url, '_blank')}
-                      variant="ghost" 
-                      className="text-orange-500 hover:text-orange-400 hover:bg-orange-500/10 font-bold"
-                    >
-                      DOWNLOAD NOW
-                    </Button>
-                  </div>
-                ))
-              ) : (
-                <div className="text-center p-12 bg-white/5 rounded-3xl border border-dashed border-white/10 text-muted-foreground">
-                  No download links available yet.
-                </div>
-              )}
-            </div>
-          </section>
         </div>
 
         {/* Sidebar Info */}
