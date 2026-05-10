@@ -44,6 +44,12 @@ export default function MovieDetailPage() {
 
   const seasonNames = Object.keys(seasonGroups);
 
+  const handleDownload = (url: string) => {
+    // Ensure the URL is absolute
+    const absoluteUrl = url.startsWith('http') ? url : `https://${url}`;
+    window.open(absoluteUrl, '_blank', 'noopener,noreferrer');
+  };
+
   if (loading) return <div className="pt-24 text-center">Loading...</div>;
   if (!movie) return <div className="pt-24 text-center">Movie not found</div>;
 
@@ -170,7 +176,7 @@ export default function MovieDetailPage() {
                            </div>
                         </div>
                         <Button 
-                          onClick={() => window.open(link.url, '_blank')}
+                          onClick={() => handleDownload(link.url)}
                           className="bg-orange-500 hover:bg-orange-600 text-white font-bold md:shrink-0 h-12 px-6"
                         >
                           DOWNLOAD NOW

@@ -24,6 +24,7 @@ GUIDELINES:
 1. Title: Clean it (remove dots, years, resolution tags).
 2. Links: Identify ALL download/streaming links. 
    - Extract the FULL filename line associated with the link.
+   - Ensure the "url" is an ABSOLUTE URL starting with http:// or https://.
    - Extract "quality" (e.g. 1080p, 4k).
    - Extract "size" (e.g. 1.2GB, 500MB).
    - Extract "language" (e.g. Hindi, English).
