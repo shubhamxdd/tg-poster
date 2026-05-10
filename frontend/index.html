@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Movie Catalog</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <header>
+        <div class="logo">MovieCatalog</div>
+        <div class="search-container">
+            <input type="text" id="search-input" placeholder="Search movies...">
+        </div>
+    </header>
+
+    <main>
+        <div class="filters">
+            <button class="filter-btn active" data-type="">All</button>
+            <button class="filter-btn" data-type="movie">Movies</button>
+            <button class="filter-btn" data-type="series">Series</button>
+            <button class="filter-btn" data-type="anime">Anime</button>
+        </div>
+
+        <div id="movie-grid" class="movie-grid">
+            <!-- Movies will be injected here -->
+            <div class="loading">Loading movies...</div>
+        </div>
+    </main>
+
+    <script src="app.js"></script>
+</body>
+</html>
