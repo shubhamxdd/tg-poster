@@ -8,10 +8,6 @@
     {
       "source": "/webhook",
       "destination": "/api/index.js"
-    },
-    {
-      "source": "/(.*)",
-      "destination": "/client/dist/$1"
     }
   ]
 }
