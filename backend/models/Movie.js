@@ -12,7 +12,6 @@ const movieSchema = new mongoose.Schema({
   },
   link: {
     type: String,
-    required: true,
   },
   links: [{
     label: { type: String, default: 'Download' },
