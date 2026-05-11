@@ -2,109 +2,61 @@
 
 A modern, fully automated movie and series catalog website that listens to a private Telegram channel, parses messages using AI, enriches metadata via TMDB, and displays everything on a sleek, Netflix-style React frontend.
 
-![Frontend Preview](https://via.placeholder.com/1200x600?text=Modern+Movie+Catalog+UI+Preview)
+## 🚀 Key Features
 
-## 🚀 Features
-
--   **🤖 AI-Powered Parsing:** Uses OpenRouter (Gemini/Claude) to extract structured data (titles, seasons, qualities, sizes) from unstructured Telegram messages.
--   **📱 Telegram Webhook (Edits Support):** Real-time synchronization. Supports message edits—if you update a post in Telegram, it updates on the site instantly.
--   **🔄 Smart Deduplication:** Automatically detects if a show already exists (via Title + Year) and updates the existing entry instead of creating duplicates.
--   **📦 Tabbed Season Organization:** Intelligently groups download links into interactive tabs by Season (e.g., Season 1, Season 2).
--   **💾 Detailed File Metadata:** Displays full filenames, file sizes, resolutions (1080p/4k), and audio languages for every link.
--   **🖼️ Smart Poster Handling:** Fetches high-resolution posters from TMDB or uses directly attached Telegram photos.
--   **✨ Full Metadata Enrichment:** Automatically pulls Top Cast (with photos), Directors, Ratings, Runtimes, and Status from TMDB.
--   **🎨 Premium UI:** Built with Vite, React 19, Tailwind CSS, and Shadcn UI for a modern, dark-themed experience.
+-   **🤖 AI-Powered Parsing:** Uses Gemini 2.0 (via OpenRouter) to intelligently extract titles, seasons, qualities, and sizes from raw Telegram text.
+-   **📱 Real-time Sync:** Supports new messages and **edits**. Update a post in Telegram, and the site updates instantly.
+-   **🔄 Smart Deduplication:** Prevents duplicate entries by checking both Telegram Message IDs and show titles/years.
+-   **📦 Season Tabs:** Automatically groups download links into interactive tabs by Season (Season 1, Season 2, etc.).
+-   **💾 Rich Metadata:** Displays full filenames, file sizes, resolutions, and audio languages.
+-   **🖼️ Metadata Enrichment:** Automatically pulls Cast (with photos), Directors, Ratings, Runtimes, and Posters from TMDB.
+-   **🎨 Premium UI:** Built with React 19, Tailwind CSS, and Shadcn UI for a high-end, responsive dark-mode experience.
 
 ## 🛠️ Tech Stack
 
--   **Frontend:** React 19, Vite, Tailwind CSS, Shadcn UI, Lucide React.
--   **Backend:** Node.js, Express, Mongoose (MongoDB).
--   **AI Engine:** Vercel AI SDK + OpenRouter.
--   **External APIs:** Telegram Bot API, TMDB API.
+-   **Frontend:** Vite, React 19, Tailwind CSS, Shadcn UI, Lucide React.
+-   **Backend:** Node.js (ESM), Express, Mongoose.
+-   **Infrastructure:** Vercel (Serverless), MongoDB Atlas (Cloud Database).
+-   **AI:** Vercel AI SDK + OpenRouter.
 
-## 📋 Prerequisites
-
--   Node.js (v18+)
--   MongoDB (Local or Atlas)
--   Telegram Bot Token (from [@BotFather](https://t.me/botfather))
--   OpenRouter API Key (for Gemini/Claude parsing)
--   TMDB API Key (for metadata and posters)
-
-## 📥 Installation
+## 📥 Local Installation
 
 1.  **Clone the repository:**
     ```bash
-    git clone https://github.com/your-username/movie-catalog.git
+    git clone <your-repo-url>
     cd movie-catalog
     ```
 
-2.  **Install Backend Dependencies:**
+2.  **Install Dependencies:**
     ```bash
     npm install
+    cd client && npm install
+    cd ..
     ```
 
-3.  **Install Frontend Dependencies:**
-    ```bash
-    cd client
-    npm install
+3.  **Environment Variables:**
+    Create a `.env` in the root and fill in:
+    ```env
+    MONGO_URI=mongodb://localhost:27017/moviecatalog
+    BOT_TOKEN=your_telegram_bot_token
+    OPENROUTER_API_KEY=your_key
+    TMDB_API_KEY=your_key
+    WEBHOOK_SECRET=random_secret_string
+    AI_MODEL=google/gemini-2.0-flash-001
     ```
 
-## ⚙️ Configuration
+4.  **Run Dev Mode:**
+    -   Backend: `npm run dev` (starts on port 3000)
+    -   Frontend: `cd client && npm run dev` (starts on port 5173)
 
-Create a `.env` file in the root directory and fill in your credentials:
+## 🌐 Deployment
 
-```env
-PORT=3000
-MONGO_URI=mongodb://localhost:27017/moviecatalog
-BOT_TOKEN=your_telegram_bot_token
-OPENROUTER_API_KEY=your_openrouter_api_key
-AI_MODEL=google/gemini-2.0-flash-001
-TMDB_API_KEY=your_tmdb_api_key
-WEBHOOK_SECRET=your_random_secret_string
-```
+This app is optimized for **Vercel Serverless**. 
+Please refer to the detailed [DEPLOYMENT.md](./DEPLOYMENT.md) for step-by-step hosting instructions.
 
-## 🚀 Running the App
+## 🧠 System Architecture
 
-1.  **Start the Backend (from root):**
-    ```bash
-    npm run dev
-    ```
-
-2.  **Start the Frontend (from client directory):**
-    ```bash
-    cd client
-    npm run dev
-    ```
-
-3.  **Setup Telegram Webhook:**
-    Expose your local server (e.g., using `ngrok`) and register the webhook:
-    ```bash
-    curl "https://api.telegram.org/bot<BOT_TOKEN>/setWebhook?url=https://<YOUR_URL>/webhook&secret_token=<WEBHOOK_SECRET>"
-    ```
-
-## 📂 Project Structure
-
-```text
-├── backend/
-│   ├── config/          # Database connection
-│   ├── controllers/     # Webhook logic (Updates & Deduplication)
-│   ├── models/          # Mongoose Schema (Structured Links & Cast)
-│   ├── routes/          # Express API routes
-│   ├── services/        # AI Parser (Vercel AI SDK) & TMDB integration
-│   └── server.js        # Entry point
-├── client/              # Vite + React Frontend
-│   ├── src/
-│   │   ├── api/         # Axios API calls
-│   │   ├── components/  # Shadcn UI & Custom Navbar
-│   │   ├── pages/       # Home & Season-Tabbed Detail pages
-│   │   └── types/       # TypeScript definitions
-├── PLAN.md              # Original project roadmap
-└── README.md            # Updated Documentation
-```
-
-## 🤝 Contributing
-
-Feel free to fork this project and submit PRs for any improvements or new features!
+For a deep dive into how the AI parsing and webhook logic works, see [HOW_IT_WORKS.md](./HOW_IT_WORKS.md).
 
 ---
-*Developed with ❤️ in May 2026*
+*Developed in May 2026*
