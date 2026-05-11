@@ -1,7 +1,8 @@
 import axios from 'axios';
 import type { Movie, MovieResponse } from '@/types/index';
 
-const API_BASE_URL = 'http://localhost:3000/api';
+// Use relative path for serverless deployment
+const API_BASE_URL = '/api';
 
 const api = axios.create({
   baseURL: API_BASE_URL,

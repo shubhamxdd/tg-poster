@@ -36,7 +36,7 @@ export default function HomePage() {
   return (
     <div className="container pt-24 pb-12">
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-6">
-        {movies.map((movie) => (
+        {Array.isArray(movies) && movies.map((movie) => (
           <MovieCard key={movie._id} movie={movie} />
         ))}
       </div>
