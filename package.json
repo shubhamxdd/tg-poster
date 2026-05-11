@@ -6,6 +6,7 @@
   "scripts": {
     "start": "node backend/server.js",
     "dev": "nodemon backend/server.js",
+    "build": "cd client && npm install && npm run build && cd .. && rm -rf dist && mv client/dist dist",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],
