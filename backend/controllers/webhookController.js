@@ -66,9 +66,22 @@ export const handleTelegramWebhook = async (req, res) => {
     }
 
     // 5. Merge and Save/Update
+    // Fields that TMDB provides accurately — always prefer TMDB over AI guesses
+    const tmdbOwned = ['genre', 'director', 'cast', 'rating', 'runtime', 'status', 'backdrop', 'country', 'year'];
+
+    // Strip empty/null/empty-array values from AI data
+    const cleanMovieData = Object.fromEntries(
+      Object.entries(movieData).filter(([key, v]) => {
+        // If TMDB has this field, never let AI override it
+        if (tmdbOwned.includes(key) && tmdbDetails && tmdbDetails[key] != null) return false;
+        if (v === null || v === undefined || v === '') return false;
+        if (Array.isArray(v) && v.length === 0) return false;
+        return true;
+      })
+    );
     const finalData = {
-      ...tmdbDetails,
-      ...movieData, // AI data from message takes priority
+      ...cleanMovieData,   // AI base (title, type, links, language, description…)
+      ...tmdbDetails,      // TMDB always wins for enrichment fields
       poster: posterUrl,
       rawMessage: text,
       telegramMsgId: msgId,

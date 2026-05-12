@@ -104,11 +104,11 @@ Telegram Message:
       type: ['movie', 'series', 'anime'].includes(movieData.type) ? movieData.type : 'movie',
       links: formattedLinks,
       link: formattedLinks[0]?.url || '', 
-      genre: Array.isArray(movieData.genre) ? movieData.genre : [],
+      genre: Array.isArray(movieData.genre) && movieData.genre.length > 0 ? movieData.genre : [],
       year: cleanedYear,
-      language: movieData.language || 'Unknown',
-      director: movieData.director || 'N/A',
-      status: movieData.status || 'Released',
+      language: movieData.language && movieData.language !== 'Unknown' ? movieData.language : '',
+      director: movieData.director && movieData.director !== 'N/A' && movieData.director !== 'Unknown' ? movieData.director : '',
+      status: movieData.status && movieData.status !== 'Unknown' ? movieData.status : '',
       description: movieData.description || ''
     };
   } catch (error) {

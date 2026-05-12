@@ -1,8 +1,9 @@
 import Movie from '../models/Movie.js';
+import mongoose from 'mongoose';
 
 export const getMovies = async (req, res) => {
   try {
-    const { type, genre, language, search, page = 1, limit = 20 } = req.query;
+    const { type, genre, language, search, page = 1, limit = 24 } = req.query;
     
     const query = {};
     if (type) query.type = type;
@@ -28,9 +29,42 @@ export const getMovies = async (req, res) => {
   }
 };
 
+/**
+ * Get movie by ID or slug.
+ * Accepts:
+ *   - Full 24-char MongoDB ObjectId (backward compat)
+ *   - Slug format: "title-year-{24charObjectId}"
+ *   - Slug format: "title-year-{8charSuffix}" — matches last 8 chars of ObjectId
+ */
 export const getMovieById = async (req, res) => {
   try {
-    const movie = await Movie.findById(req.params.id);
+    const param = req.params.id;
+    let movie = null;
+
+    // 1. Try direct ObjectId lookup
+    if (/^[a-f0-9]{24}$/i.test(param)) {
+      movie = await Movie.findById(param);
+    } else {
+      // 2. Extract the last hyphen-separated segment
+      const parts = param.split('-');
+      const lastPart = parts[parts.length - 1];
+
+      if (/^[a-f0-9]{24}$/i.test(lastPart)) {
+        // Full ObjectId embedded in slug
+        movie = await Movie.findById(lastPart);
+      } else if (/^[a-f0-9]{8}$/i.test(lastPart)) {
+        // 8-char suffix — search using regex on _id string
+        // MongoDB ObjectIds end with the last 8 hex chars
+        const regex = new RegExp(lastPart + '$', 'i');
+        // findById won't work here; use string matching approach
+        const allIds = await Movie.find({}, { _id: 1 }).lean();
+        const match = allIds.find(doc => doc._id.toString().endsWith(lastPart.toLowerCase()));
+        if (match) {
+          movie = await Movie.findById(match._id);
+        }
+      }
+    }
+
     if (!movie) return res.status(404).json({ message: 'Movie not found' });
     res.json(movie);
   } catch (error) {

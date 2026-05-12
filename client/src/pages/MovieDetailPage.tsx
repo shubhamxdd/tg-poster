@@ -1,16 +1,45 @@
 import { useEffect, useState, useMemo } from "react";
-import { useParams } from "react-router-dom";
+import { useParams, Link } from "react-router-dom";
 import { movieApi } from "@/api/movieApi";
 import type { Movie, Link as MovieLink } from "@/types/index";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Play, Heart, Share2, Download, Info, Clock, MapPin, Film, HardDrive, Languages } from "lucide-react";
+import { extractFullIdFromSlug } from "@/lib/utils";
+import {
+  Card,
+  CardBody,
+  Button,
+  Chip,
+  Tabs,
+  Tab,
+  Image,
+  Avatar,
+  Divider,
+  Tooltip,
+} from "@heroui/react";
+import {
+  Download,
+  Star,
+  Clock,
+  Globe,
+  Film,
+  Share2,
+  Heart,
+  ChevronLeft,
+  HardDrive,
+  Languages,
+  Calendar,
+  Clapperboard,
+  Tv2,
+  Sparkles,
+  ShieldCheck,
+} from "lucide-react";
 
 export default function MovieDetailPage() {
-  const { id } = useParams<{ id: string }>();
+  const { slug } = useParams<{ slug: string }>();
   const [movie, setMovie] = useState<Movie | null>(null);
   const [loading, setLoading] = useState(true);
+  const [wishlist, setWishlist] = useState(false);
+
+  const id = useMemo(() => (slug ? extractFullIdFromSlug(slug) : ""), [slug]);
 
   useEffect(() => {
     const fetchMovie = async () => {
@@ -28,193 +57,310 @@ export default function MovieDetailPage() {
     fetchMovie();
   }, [id]);
 
-  // Group links by season
   const seasonGroups = useMemo(() => {
-    if (!movie || !movie.links) return {};
+    if (!movie?.links) return {} as Record<string, MovieLink[]>;
     const groups: Record<string, MovieLink[]> = {};
-    
-    movie.links.forEach(link => {
-      const seasonLabel = link.season ? `Season ${link.season}` : "General";
-      if (!groups[seasonLabel]) groups[seasonLabel] = [];
-      groups[seasonLabel].push(link);
+    movie.links.forEach((link) => {
+      const key = link.season ? `Season ${link.season}` : "Downloads";
+      if (!groups[key]) groups[key] = [];
+      groups[key].push(link);
     });
-
     return groups;
   }, [movie]);
 
   const seasonNames = Object.keys(seasonGroups);
 
   const handleDownload = (url: string) => {
-    // Ensure the URL is absolute
-    const absoluteUrl = url.startsWith('http') ? url : `https://${url}`;
-    window.open(absoluteUrl, '_blank', 'noopener,noreferrer');
+    const absoluteUrl = url.startsWith("http") ? url : `https://${url}`;
+    window.open(absoluteUrl, "_blank", "noopener,noreferrer");
   };
 
-  if (loading) return <div className="pt-24 text-center">Loading...</div>;
-  if (!movie) return <div className="pt-24 text-center">Movie not found</div>;
+  const handleShare = () => {
+    if (navigator.share) {
+      navigator.share({ title: movie?.title || "", url: window.location.href });
+    } else {
+      navigator.clipboard.writeText(window.location.href);
+    }
+  };
+
+  const TYPE_ICON: Record<string, React.ElementType> = {
+    movie: Film,
+    series: Tv2,
+    anime: Sparkles,
+  };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center pt-20">
+        <div className="space-y-6 text-center">
+          {/* Skeleton hero */}
+          <div className="w-64 h-8 skeleton-shimmer rounded-lg mx-auto" />
+          <div className="w-48 h-4 skeleton-shimmer rounded-lg mx-auto" />
+          <div className="flex items-center justify-center gap-2 mt-8">
+            <div className="w-2 h-2 rounded-full bg-brand animate-bounce" style={{ animationDelay: "0ms" }} />
+            <div className="w-2 h-2 rounded-full bg-brand animate-bounce" style={{ animationDelay: "150ms" }} />
+            <div className="w-2 h-2 rounded-full bg-brand animate-bounce" style={{ animationDelay: "300ms" }} />
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (!movie) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center pt-20 gap-6">
+        <div className="w-20 h-20 rounded-3xl bg-white/5 border border-white/10 flex items-center justify-center">
+          <Film className="w-10 h-10 text-white/20" />
+        </div>
+        <div className="text-center space-y-2">
+          <h2 className="font-display text-3xl tracking-wider">NOT FOUND</h2>
+          <p className="text-white/40 text-sm">This title doesn't exist in the vault.</p>
+        </div>
+        <Button as={Link} to="/" className="bg-brand text-white rounded-full font-bold">
+          Back to Vault
+        </Button>
+      </div>
+    );
+  }
+
+  const TypeIcon = TYPE_ICON[movie.type] || Film;
+  const typeColor =
+    movie.type === "movie"
+      ? "text-blue-400 bg-blue-500/10 border-blue-500/20"
+      : movie.type === "series"
+      ? "text-purple-400 bg-purple-500/10 border-purple-500/20"
+      : "text-pink-400 bg-pink-500/10 border-pink-500/20";
 
   return (
-    <div className="min-h-screen bg-background">
-      {/* Hero Section */}
-      <div className="relative h-[60vh] md:h-[80vh] w-full overflow-hidden">
-        {/* Background Overlay */}
-        <div className="absolute inset-0 z-0">
-          <img 
-            src={movie.poster} 
-            alt="" 
-            className="w-full h-full object-cover blur-sm opacity-30"
+    <div className="min-h-screen">
+      {/* ─── CINEMATIC HERO ─── */}
+      <div className="relative h-[70vh] md:h-[85vh] overflow-hidden">
+        {/* Hero BG — backdrop (no-text preferred) → any backdrop → poster fallback */}
+        <div className="absolute inset-0">
+          <img
+            src={movie.backdrop || movie.poster}
+            alt=""
+            className="w-full h-full object-cover brightness-40"
           />
-          <div className="absolute inset-0 bg-gradient-to-t from-background via-background/80 to-transparent" />
+          <div className="absolute inset-0 bg-gradient-to-t from-[#0D0D0F] via-[#0D0D0F]/60 to-[#0D0D0F]/20" />
+          <div className="absolute inset-0 bg-gradient-to-r from-[#0D0D0F]/80 via-transparent to-transparent" />
+          {/* Noise overlay */}
+          <div className="absolute inset-0 noise-bg opacity-60" />
+        </div>
+
+        {/* Back button */}
+        <div className="absolute top-20 left-4 md:left-8 z-20">
+          <Button
+            as={Link}
+            to="/"
+            variant="flat"
+            className="bg-black/40 backdrop-blur-md border border-white/10 text-white/70 hover:text-white rounded-xl h-9 px-3 text-sm"
+            startContent={<ChevronLeft className="w-4 h-4" />}
+          >
+            Back
+          </Button>
         </div>
 
         {/* Hero Content */}
-        <div className="container relative z-10 h-full flex flex-col justify-end pb-8 md:pb-12 gap-4 md:gap-6 px-4 md:px-12 lg:px-24">
-          <div className="flex flex-wrap gap-2 md:gap-3 items-center mb-1">
-            <Badge className="bg-orange-500 text-white border-0 text-xs md:text-sm py-0.5 md:py-1">★ {movie.rating || 'N/A'}</Badge>
-            <span className="flex items-center gap-1 text-xs md:text-sm font-medium text-white/70">
-              <Clock className="h-3 w-3 md:h-4 md:w-4" /> {movie.runtime ? `${movie.runtime} min` : 'N/A'}
-            </span>
-            <span className="flex items-center gap-1 text-xs md:text-sm font-medium text-white/70">
-              <MapPin className="h-3 w-3 md:h-4 md:w-4" /> {movie.country || 'Unknown'}
-            </span>
-            <span className="text-xs md:text-sm font-medium text-white/70">| {movie.year}</span>
-          </div>
+        <div className="absolute inset-0 flex items-end z-10">
+          <div className="container mx-auto px-4 md:px-8 lg:px-16 pb-12 flex gap-8 md:gap-12 items-end">
+            {/* Poster — desktop only */}
+            <div className="hidden md:block shrink-0 w-48 lg:w-60">
+              <div className="aspect-[2/3] rounded-2xl overflow-hidden border border-white/10 shadow-[0_30px_80px_rgba(0,0,0,0.8)] ring-1 ring-white/5">
+                <Image
+                  src={movie.poster}
+                  alt={movie.title}
+                  classNames={{ img: "w-full h-full object-cover" }}
+                  radius="none"
+                  removeWrapper
+                />
+              </div>
+            </div>
 
-          <h1 className="text-3xl sm:text-4xl md:text-6xl lg:text-8xl font-black tracking-tighter uppercase max-w-5xl leading-tight md:leading-none">
-            {movie.title.split(' ').map((word, i) => (
-               <span key={i} className={i % 2 === 1 ? "text-orange-500" : ""}>{word} </span>
-            ))}
-          </h1>
+            {/* Text */}
+            <div className="flex-1 min-w-0 space-y-4 md:space-y-5">
+              {/* Badges */}
+              <div className="flex flex-wrap items-center gap-2">
+                <span className={`flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest px-2.5 py-1 rounded-lg border ${typeColor}`}>
+                  <TypeIcon className="w-3 h-3" />
+                  {movie.type}
+                </span>
+                {movie.rating && (
+                  <span className="flex items-center gap-1.5 text-[10px] font-bold text-amber-400 bg-amber-400/10 border border-amber-400/20 px-2.5 py-1 rounded-lg">
+                    <Star className="w-3 h-3 fill-amber-400" />
+                    {movie.rating} / 10
+                  </span>
+                )}
+                {movie.status && (
+                  <span className="flex items-center gap-1.5 text-[10px] font-bold text-emerald-400 bg-emerald-400/10 border border-emerald-400/20 px-2.5 py-1 rounded-lg">
+                    <ShieldCheck className="w-3 h-3" />
+                    {movie.status}
+                  </span>
+                )}
+              </div>
 
-          <p className="max-w-3xl text-sm md:text-lg lg:text-xl text-white/80 leading-relaxed line-clamp-3 md:line-clamp-none font-medium hidden sm:block">
-            {movie.description}
-          </p>
+              {/* Title */}
+              <h1 className="font-display text-4xl sm:text-5xl md:text-6xl lg:text-8xl tracking-wider text-white leading-none">
+                {movie.title}
+              </h1>
 
-          <div className="flex flex-wrap gap-2 md:gap-4 mt-2">
-            <Button size="lg" className="bg-orange-500 hover:bg-orange-600 text-white px-6 md:px-10 h-10 md:h-14 text-sm md:text-lg font-bold">
-              <Play className="fill-current mr-1 md:mr-2 h-4 w-4 md:h-6 md:w-6" /> TRAILER
-            </Button>
-            <div className="flex gap-2">
-              <Button size="icon" variant="outline" className="bg-white/5 border-white/10 hover:bg-white/10 h-10 w-10 md:h-14 md:w-14">
-                <Heart className="h-5 w-5 md:h-6 md:w-6" />
-              </Button>
-              <Button size="icon" variant="outline" className="bg-white/5 border-white/10 hover:bg-white/10 h-10 w-10 md:h-14 md:w-14">
-                <Share2 className="h-5 w-5 md:h-6 md:w-6" />
-              </Button>
+              {/* Meta row */}
+              <div className="flex flex-wrap items-center gap-3 text-sm text-white/50">
+                {movie.year && (
+                  <span className="flex items-center gap-1.5">
+                    <Calendar className="w-3.5 h-3.5 text-brand" />
+                    {movie.year}
+                  </span>
+                )}
+                {movie.runtime && (
+                  <>
+                    <span className="w-1 h-1 rounded-full bg-white/20" />
+                    <span className="flex items-center gap-1.5">
+                      <Clock className="w-3.5 h-3.5 text-brand" />
+                      {movie.runtime} min
+                    </span>
+                  </>
+                )}
+                {movie.country && (
+                  <>
+                    <span className="w-1 h-1 rounded-full bg-white/20" />
+                    <span className="flex items-center gap-1.5">
+                      <Globe className="w-3.5 h-3.5 text-brand" />
+                      {movie.country}
+                    </span>
+                  </>
+                )}
+                {movie.language && (
+                  <>
+                    <span className="w-1 h-1 rounded-full bg-white/20" />
+                    <span className="flex items-center gap-1.5">
+                      <Languages className="w-3.5 h-3.5 text-brand" />
+                      {movie.language}
+                    </span>
+                  </>
+                )}
+              </div>
+
+              {/* Description */}
+              {movie.description && (
+                <p className="text-sm md:text-base text-white/60 leading-relaxed max-w-2xl line-clamp-3">
+                  {movie.description}
+                </p>
+              )}
+
+              {/* Genre tags */}
+              <div className="flex flex-wrap gap-2">
+                {movie.genre?.map((g) => (
+                  <Chip
+                    key={g}
+                    size="sm"
+                    className="bg-white/5 border border-white/10 text-white/50 text-[10px] uppercase tracking-wider hover:bg-white/10 transition-colors"
+                  >
+                    {g}
+                  </Chip>
+                ))}
+              </div>
+
+              {/* Action buttons */}
+              <div className="flex flex-wrap gap-3 pt-1">
+                <Tooltip content={wishlist ? "Remove from watchlist" : "Add to watchlist"}>
+                  <Button
+                    isIconOnly
+                    variant="flat"
+                    onPress={() => setWishlist(!wishlist)}
+                    className={`h-12 w-12 rounded-xl border ${wishlist ? "bg-brand/20 border-brand/30 text-brand" : "bg-white/5 border-white/10 text-white/50 hover:text-white"} transition-all`}
+                  >
+                    <Heart className={`w-5 h-5 ${wishlist ? "fill-current" : ""}`} />
+                  </Button>
+                </Tooltip>
+                <Tooltip content="Share">
+                  <Button
+                    isIconOnly
+                    variant="flat"
+                    onPress={handleShare}
+                    className="h-12 w-12 rounded-xl bg-white/5 border border-white/10 text-white/50 hover:text-white transition-all"
+                  >
+                    <Share2 className="w-5 h-5" />
+                  </Button>
+                </Tooltip>
+              </div>
             </div>
           </div>
         </div>
       </div>
 
-      {/* Info & Downloads Section */}
-      <div className="container py-8 md:py-12 grid grid-cols-1 lg:grid-cols-3 gap-8 md:gap-16 px-4 md:px-12 lg:px-24">
-        
-        {/* Main Content (Left) */}
-        <div className="lg:col-span-2 space-y-12 md:space-y-16 order-2 lg:order-1">
-          
-          {/* Downloads with Tabs */}
-          <section>
-            <h2 className="text-2xl md:text-3xl font-bold mb-6 md:mb-8 flex items-center gap-4">
-              DOWNLOADS <div className="h-px flex-1 bg-white/10" />
-            </h2>
-            
-            <div className="bg-orange-500/10 border border-orange-500/20 rounded-2xl md:rounded-3xl p-4 md:p-8 flex items-center justify-between gap-4 md:gap-8 mb-6 md:mb-10">
-              <div className="flex items-center gap-3 md:gap-6">
-                <div className="w-10 h-10 md:w-14 md:h-14 rounded-xl md:rounded-2xl bg-orange-500/20 flex items-center justify-center text-orange-500 shrink-0">
-                  <Info className="h-5 w-5 md:h-7 md:w-7" />
-                </div>
-                <div className="space-y-0.5 md:space-y-1">
-                  <p className="font-bold text-sm md:text-lg">Detailed Files</p>
-                  <p className="text-[10px] md:text-sm text-white/60">
-                    Switch seasons and choose quality below.
-                  </p>
-                </div>
-              </div>
+      {/* ─── MAIN CONTENT ─── */}
+      <div className="container mx-auto px-4 md:px-8 lg:px-16 py-12 grid grid-cols-1 lg:grid-cols-3 gap-10 lg:gap-16">
+        {/* LEFT — Downloads + Cast */}
+        <div className="lg:col-span-2 space-y-14">
+
+          {/* Downloads */}
+          <section id="downloads">
+            <div className="flex items-center gap-4 mb-8">
+              <Download className="w-5 h-5 text-brand" />
+              <h2 className="font-display text-3xl tracking-wider">DOWNLOADS</h2>
+              <div className="h-px flex-1 bg-white/8" />
+              <span className="text-[10px] text-white/30 uppercase tracking-widest font-medium">
+                {movie.links?.length || 0} files
+              </span>
             </div>
 
-            {seasonNames.length > 0 ? (
-              <Tabs defaultValue={seasonNames[0]} className="w-full">
-                <TabsList className="bg-white/5 border border-white/10 p-1 mb-6 md:mb-8 flex-wrap h-auto">
-                  {seasonNames.map(name => (
-                    <TabsTrigger 
-                      key={name} 
-                      value={name}
-                      className="data-[state=active]:bg-orange-500 data-[state=active]:text-white font-bold text-xs md:text-sm flex-1"
-                    >
-                      {name}
-                    </TabsTrigger>
-                  ))}
-                </TabsList>
-                {seasonNames.map(name => (
-                  <TabsContent key={name} value={name} className="space-y-3 md:space-y-4">
-                    {seasonGroups[name].map((link, idx) => (
-                      <div key={idx} className="flex flex-col md:flex-row md:items-center justify-between p-4 md:p-6 rounded-xl md:rounded-2xl bg-white/5 border border-white/10 hover:bg-white/10 transition-all group gap-4">
-                        <div className="flex items-start gap-3 md:gap-6 overflow-hidden">
-                           <div className="w-10 h-10 md:w-12 md:h-12 rounded-lg md:rounded-xl bg-orange-500/20 flex items-center justify-center text-orange-500 shrink-0 group-hover:scale-110 transition-transform">
-                             <Download className="h-5 w-5 md:h-6 md:w-6" />
-                           </div>
-                           <div className="overflow-hidden">
-                             <span className="font-bold text-base md:text-lg block truncate" title={link.filename || link.label}>
-                               {link.label}
-                             </span>
-                             <p className="text-[10px] md:text-xs text-muted-foreground break-all line-clamp-1 italic mb-2">
-                               {link.filename || "Direct High Speed Link"}
-                             </p>
-                             <div className="flex flex-wrap gap-2 mt-1">
-                                {link.size && (
-                                  <span className="flex items-center gap-1 text-[8px] md:text-[10px] bg-white/5 px-1.5 md:px-2 py-0.5 md:py-1 rounded border border-white/10 font-bold uppercase tracking-wider text-white/60">
-                                    <HardDrive className="h-2 w-2 md:h-3 md:w-3" /> {link.size}
-                                  </span>
-                                )}
-                                {link.quality && (
-                                  <span className="flex items-center gap-1 text-[8px] md:text-[10px] bg-orange-500/10 px-1.5 md:px-2 py-0.5 md:py-1 rounded border border-orange-500/20 font-bold uppercase tracking-wider text-orange-500">
-                                    {link.quality}
-                                  </span>
-                                )}
-                                {link.language && (
-                                  <span className="flex items-center gap-1 text-[8px] md:text-[10px] bg-blue-500/10 px-1.5 md:px-2 py-0.5 md:py-1 rounded border border-blue-500/20 font-bold uppercase tracking-wider text-blue-400">
-                                    <Languages className="h-2 w-2 md:h-3 md:w-3" /> {link.language}
-                                  </span>
-                                )}
-                             </div>
-                           </div>
-                        </div>
-                        <Button 
-                          onClick={() => handleDownload(link.url)}
-                          className="bg-orange-500 hover:bg-orange-600 text-white font-bold md:shrink-0 h-10 md:h-12 px-4 md:px-6 text-xs md:text-sm w-full md:w-auto"
-                        >
-                          DOWNLOAD NOW
-                        </Button>
-                      </div>
-                    ))}
-                  </TabsContent>
+            {seasonNames.length > 1 ? (
+              <Tabs
+                aria-label="Download seasons"
+                classNames={{
+                  tabList: "bg-white/3 border border-white/8 p-1 rounded-2xl gap-1",
+                  cursor: "bg-brand shadow-lg shadow-brand/30 rounded-xl",
+                  tab: "font-bold text-xs uppercase tracking-widest text-white/40 data-[selected=true]:text-white h-9 px-5",
+                  panel: "pt-6",
+                }}
+              >
+                {seasonNames.map((name) => (
+                  <Tab key={name} title={name}>
+                    <div className="space-y-3">
+                      {seasonGroups[name].map((link, idx) => (
+                        <DownloadRow key={idx} link={link} onDownload={handleDownload} />
+                      ))}
+                    </div>
+                  </Tab>
                 ))}
               </Tabs>
+            ) : seasonNames.length === 1 ? (
+              <div className="space-y-3">
+                {seasonGroups[seasonNames[0]].map((link, idx) => (
+                  <DownloadRow key={idx} link={link} onDownload={handleDownload} />
+                ))}
+              </div>
             ) : (
-              <div className="text-center p-8 md:p-12 bg-white/5 rounded-2xl md:rounded-3xl border border-dashed border-white/10 text-muted-foreground text-sm">
-                No download links available yet.
+              <div className="text-center py-16 bg-white/3 border border-dashed border-white/8 rounded-2xl">
+                <Download className="w-10 h-10 text-white/15 mx-auto mb-3" />
+                <p className="text-white/30 text-sm">No download links available yet.</p>
               </div>
             )}
           </section>
 
-          {/* Cast Section */}
+          {/* Cast */}
           {movie.cast && movie.cast.length > 0 && (
             <section>
-              <h2 className="text-2xl md:text-3xl font-bold mb-6 md:mb-8 flex items-center gap-4">
-                TOP CAST <div className="h-px flex-1 bg-white/10" />
-              </h2>
-              <div className="flex gap-4 md:gap-6 overflow-x-auto pb-4 scrollbar-hide">
+              <div className="flex items-center gap-4 mb-8">
+                <Clapperboard className="w-5 h-5 text-brand" />
+                <h2 className="font-display text-3xl tracking-wider">CAST</h2>
+                <div className="h-px flex-1 bg-white/8" />
+              </div>
+              <div className="flex gap-5 overflow-x-auto pb-4 scrollbar-hide">
                 {movie.cast.map((person, idx) => (
-                  <div key={idx} className="flex-shrink-0 w-24 md:w-32 text-center group">
-                    <div className="w-24 h-24 md:w-32 md:h-32 rounded-full overflow-hidden border-2 border-white/10 group-hover:border-orange-500 transition-colors mb-2 md:mb-3">
-                      <img 
-                        src={person.profile_path || "https://via.placeholder.com/150x150?text=No+Image"} 
-                        alt={person.name} 
-                        className="w-full h-full object-cover grayscale group-hover:grayscale-0 transition-all"
-                      />
+                  <div key={idx} className="flex-shrink-0 flex flex-col items-center gap-2.5 w-20 group cursor-pointer">
+                    <Avatar
+                      src={person.profile_path || undefined}
+                      name={person.name}
+                      className="w-16 h-16 text-sm font-bold ring-2 ring-white/10 group-hover:ring-brand/50 transition-all"
+                      isBordered
+                      color="default"
+                    />
+                    <div className="text-center">
+                      <p className="text-[11px] font-bold text-white/80 line-clamp-2 leading-tight">{person.name}</p>
+                      <p className="text-[10px] text-white/30 truncate">{person.character}</p>
                     </div>
-                    <p className="font-bold text-xs md:text-sm truncate">{person.name}</p>
-                    <p className="text-[9px] md:text-[10px] text-muted-foreground truncate uppercase">{person.character}</p>
                   </div>
                 ))}
               </div>
@@ -222,62 +368,123 @@ export default function MovieDetailPage() {
           )}
         </div>
 
-        {/* Sidebar Info (Right on Desktop, Top on Mobile) */}
-        <div className="space-y-6 md:space-y-10 order-1 lg:order-2">
-          
-          {/* Main Poster (Mobile only) */}
-          <div className="lg:hidden aspect-[2/3] w-2/3 mx-auto rounded-2xl overflow-hidden border border-white/10 shadow-2xl">
-             <img src={movie.poster} alt={movie.title} className="w-full h-full object-cover" />
-          </div>
-
-          <div className="bg-white/5 border border-white/10 rounded-2xl md:rounded-3xl p-6 md:p-8 space-y-6 md:space-y-8">
-            <div>
-              <p className="text-[9px] md:text-[10px] uppercase tracking-[0.2em] text-muted-foreground mb-2 md:mb-3">Original Title</p>
-              <p className="text-lg md:text-xl font-black uppercase tracking-tight leading-none">{movie.title}</p>
-            </div>
-            
-            <div>
-              <p className="text-[9px] md:text-[10px] uppercase tracking-[0.2em] text-muted-foreground mb-2 md:mb-3">Directed By</p>
-              <p className="font-bold text-base md:text-lg flex items-center gap-2">
-                <Film className="h-4 w-4 text-orange-500" /> {movie.director || 'N/A'}
-              </p>
-            </div>
-
-            <div className="grid grid-cols-2 gap-6 md:gap-8 text-sm md:text-base">
+        {/* RIGHT — Sidebar Info */}
+        <div className="space-y-6">
+          {/* Info Card */}
+          <Card className="bg-[#111215] border border-white/8 rounded-2xl">
+            <CardBody className="p-6 space-y-6">
+              <InfoRow label="Original Title" value={movie.title} />
+              <Divider className="bg-white/5" />
+              {movie.director && (
+                <>
+                  <InfoRow label="Director" value={movie.director} icon={<Film className="w-3.5 h-3.5 text-brand" />} />
+                  <Divider className="bg-white/5" />
+                </>
+              )}
+              <div className="grid grid-cols-2 gap-4">
+                <InfoRow label="Year" value={String(movie.year || "N/A")} />
+                <InfoRow label="Language" value={movie.language || "N/A"} />
+                <InfoRow label="Type" value={movie.type} valueClass="text-brand" />
+                {movie.runtime && <InfoRow label="Runtime" value={`${movie.runtime}m`} />}
+                {movie.country && <InfoRow label="Country" value={movie.country} />}
+                {movie.status && <InfoRow label="Status" value={movie.status} valueClass="text-emerald-400" />}
+              </div>
+              <Divider className="bg-white/5" />
               <div>
-                <p className="text-[9px] md:text-[10px] uppercase tracking-[0.2em] text-muted-foreground mb-1 md:mb-2">Language</p>
-                <p className="font-bold">{movie.language}</p>
+                <p className="text-[10px] uppercase tracking-[0.2em] text-white/30 mb-3 font-medium">Genres</p>
+                <div className="flex flex-wrap gap-1.5">
+                  {movie.genre?.map((g) => (
+                    <Chip
+                      key={g}
+                      size="sm"
+                      className="bg-white/5 border border-white/10 text-white/60 text-[10px] uppercase tracking-wider"
+                    >
+                      {g}
+                    </Chip>
+                  ))}
+                </div>
               </div>
-              <div>
-                <p className="text-[9px] md:text-[10px] uppercase tracking-[0.2em] text-muted-foreground mb-1 md:mb-2">Year</p>
-                <p className="font-bold">{movie.year}</p>
-              </div>
-              <div>
-                <p className="text-[9px] md:text-[10px] uppercase tracking-[0.2em] text-muted-foreground mb-1 md:mb-2">Type</p>
-                <p className="font-bold uppercase text-orange-500">{movie.type}</p>
-              </div>
-              <div>
-                <p className="text-[9px] md:text-[10px] uppercase tracking-[0.2em] text-muted-foreground mb-1 md:mb-2">Status</p>
-                <p className="font-bold text-green-500">{movie.status || 'Released'}</p>
-              </div>
-            </div>
+            </CardBody>
+          </Card>
 
-            <div>
-              <p className="text-[9px] md:text-[10px] uppercase tracking-[0.2em] text-muted-foreground mb-2 md:mb-3">Genres</p>
-              <div className="flex flex-wrap gap-2">
-                {movie.genre.map(g => (
-                  <Badge key={g} variant="secondary" className="bg-white/10 hover:bg-white/20 text-[9px] md:text-[10px] px-2 md:px-3 py-0.5 md:py-1 uppercase">{g}</Badge>
-                ))}
-              </div>
-            </div>
-          </div>
-
-          {/* Desktop Only Poster */}
-          <div className="hidden lg:block aspect-[2/3] rounded-3xl overflow-hidden border border-white/10 shadow-[0_0_50px_rgba(0,0,0,0.5)] group">
-            <img src={movie.poster} alt={movie.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700" />
-          </div>
         </div>
       </div>
+    </div>
+  );
+}
+
+/* ── Sub-components ── */
+
+function DownloadRow({
+  link,
+  onDownload,
+}: {
+  link: MovieLink;
+  onDownload: (url: string) => void;
+}) {
+  return (
+    <Card className="bg-[#111215] border border-white/8 hover:border-brand/25 hover:bg-[#16181C] transition-all rounded-2xl group">
+      <CardBody className="flex-row items-center justify-between gap-4 p-5">
+        <div className="flex items-center gap-4 min-w-0">
+          <div className="w-10 h-10 rounded-xl bg-brand/10 border border-brand/20 flex items-center justify-center shrink-0 group-hover:bg-brand/20 transition-colors">
+            <Download className="w-4 h-4 text-brand" />
+          </div>
+          <div className="min-w-0">
+            <p className="font-bold text-sm text-white truncate">{link.label}</p>
+            {link.filename && (
+              <p className="text-[11px] text-white/30 truncate italic mt-0.5">{link.filename}</p>
+            )}
+            <div className="flex flex-wrap gap-1.5 mt-2">
+              {link.quality && (
+                <span className="text-[9px] font-bold uppercase tracking-widest bg-amber-500/10 border border-amber-500/20 text-amber-400 px-2 py-0.5 rounded">
+                  {link.quality}
+                </span>
+              )}
+              {link.size && (
+                <span className="flex items-center gap-1 text-[9px] font-bold uppercase tracking-widest bg-white/5 border border-white/10 text-white/40 px-2 py-0.5 rounded">
+                  <HardDrive className="w-2.5 h-2.5" />
+                  {link.size}
+                </span>
+              )}
+              {link.language && (
+                <span className="flex items-center gap-1 text-[9px] font-bold uppercase tracking-widest bg-blue-500/10 border border-blue-500/20 text-blue-400 px-2 py-0.5 rounded">
+                  <Languages className="w-2.5 h-2.5" />
+                  {link.language}
+                </span>
+              )}
+            </div>
+          </div>
+        </div>
+        <Button
+          onPress={() => onDownload(link.url)}
+          className="bg-brand hover:bg-brand-dark text-white font-bold text-xs uppercase tracking-wider rounded-xl h-10 px-5 shrink-0 shadow-md shadow-brand/20 hover:shadow-brand/30 transition-all"
+          size="sm"
+        >
+          Download
+        </Button>
+      </CardBody>
+    </Card>
+  );
+}
+
+function InfoRow({
+  label,
+  value,
+  icon,
+  valueClass = "text-white font-bold",
+}: {
+  label: string;
+  value: string;
+  icon?: React.ReactNode;
+  valueClass?: string;
+}) {
+  return (
+    <div>
+      <p className="text-[9px] uppercase tracking-[0.2em] text-white/30 font-medium mb-1">{label}</p>
+      <p className={`text-sm flex items-center gap-1.5 ${valueClass}`}>
+        {icon}
+        {value}
+      </p>
     </div>
   );
 }

@@ -21,6 +21,7 @@ export type Movie = {
   links: Link[];
   link: string; // fallback
   poster: string;
+  backdrop?: string;
   genre: string[];
   year: number | null;
   language: string;

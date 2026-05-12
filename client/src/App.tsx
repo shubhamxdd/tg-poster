@@ -6,12 +6,12 @@ import MovieDetailPage from "./pages/MovieDetailPage";
 function App() {
   return (
     <Router>
-      <div className="min-h-screen bg-background text-foreground font-sans antialiased">
+      <div className="min-h-screen bg-[#0D0D0F] text-white font-body antialiased">
         <Navbar />
         <main>
           <Routes>
             <Route path="/" element={<HomePage />} />
-            <Route path="/movie/:id" element={<MovieDetailPage />} />
+            <Route path="/movie/:slug" element={<MovieDetailPage />} />
           </Routes>
         </main>
       </div>

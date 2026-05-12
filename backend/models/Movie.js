@@ -26,6 +26,10 @@ const movieSchema = new mongoose.Schema({
     type: String,
     default: '',
   },
+  backdrop: {
+    type: String,
+    default: '',
+  },
   genre: {
     type: [String],
     default: [],

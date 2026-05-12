@@ -5,6 +5,7 @@ dotenv.config();
 
 const TMDB_BASE_URL = 'https://api.themoviedb.org/3';
 const IMAGE_BASE_URL = 'https://image.tmdb.org/t/p/w500';
+const BACKDROP_BASE_URL = 'https://image.tmdb.org/t/p/original';
 
 /**
  * TMDB Service
@@ -36,15 +37,27 @@ export const fetchFullDetailsFromTMDB = async (title, type, year) => {
     const bestMatch = results[0];
     const tmdbId = bestMatch.id;
 
-    // 2. Fetch full details and credits
+    // 2. Fetch full details, credits, and images
     const detailEndpoint = `${TMDB_BASE_URL}/${tmdbType}/${tmdbId}`;
-    const [detailRes, creditRes] = await Promise.all([
+    const [detailRes, creditRes, imagesRes] = await Promise.all([
       axios.get(detailEndpoint, { params: { api_key: apiKey } }),
-      axios.get(`${detailEndpoint}/credits`, { params: { api_key: apiKey } })
+      axios.get(`${detailEndpoint}/credits`, { params: { api_key: apiKey } }),
+      // include_image_language=null fetches text-free backdrops; include en too as fallback
+      axios.get(`${detailEndpoint}/images`, { params: { api_key: apiKey, include_image_language: 'null,en' } })
     ]);
 
     const details = detailRes.data;
     const credits = creditRes.data;
+    const images = imagesRes.data;
+
+    const allBackdrops = images.backdrops || [];
+    // Prefer null-language (no text overlay) backdrops sorted by vote_average desc
+    const nullLangBackdrops = allBackdrops.filter(b => !b.iso_639_1);
+    const sortedBackdrops = nullLangBackdrops.length > 0
+      ? nullLangBackdrops.sort((a, b) => b.vote_average - a.vote_average)
+      : allBackdrops.sort((a, b) => b.vote_average - a.vote_average);
+    // Final fallback: details.backdrop_path from the main detail response
+    const backdropPath = sortedBackdrops[0]?.file_path || details.backdrop_path || null;
 
     const releaseDate = details.release_date || details.first_air_date;
     const yearFromTMDB = releaseDate ? new Date(releaseDate).getFullYear() : null;
@@ -52,6 +65,7 @@ export const fetchFullDetailsFromTMDB = async (title, type, year) => {
     // Extract relevant info
     return {
       poster: details.poster_path ? `${IMAGE_BASE_URL}${details.poster_path}` : null,
+      backdrop: backdropPath ? `${BACKDROP_BASE_URL}${backdropPath}` : null,
       rating: details.vote_average ? details.vote_average.toFixed(1) : null,
       runtime: details.runtime || (details.episode_run_time ? details.episode_run_time[0] : null),
       status: details.status,
