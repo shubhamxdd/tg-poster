@@ -24,28 +24,14 @@ const NAV_LINKS = [
 
 export default function Navbar() {
   const [searchParams] = useSearchParams();
-  const navigate = useNavigate();
-  const [query, setQuery] = useState(searchParams.get("search") || "");
   const [scrolled, setScrolled] = useState(false);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
-
-  useEffect(() => {
-    setQuery(searchParams.get("search") || "");
-  }, [searchParams]);
 
   useEffect(() => {
     const handleScroll = () => setScrolled(window.scrollY > 20);
     window.addEventListener("scroll", handleScroll);
     return () => window.removeEventListener("scroll", handleScroll);
   }, []);
-
-  const handleSearch = (e: React.FormEvent) => {
-    e.preventDefault();
-    const params = new URLSearchParams(searchParams);
-    if (query) params.set("search", query);
-    else params.delete("search");
-    navigate(`/?${params.toString()}`);
-  };
 
   return (
     <HeroNavbar
@@ -82,7 +68,7 @@ export default function Navbar() {
           const isActive =
             href === "/"
               ? !searchParams.get("type")
-              : searchParams.get("type") === label.toLowerCase();
+              : searchParams.get("type") === label.toLowerCase() || (label === "Admin" && window.location.pathname === "/admin");
           return (
             <NavbarItem key={label}>
               <Link
@@ -100,26 +86,8 @@ export default function Navbar() {
         })}
       </NavbarContent>
 
-      {/* Search */}
+      {/* Badges/Info */}
       <NavbarContent justify="end" className="gap-3">
-        <NavbarItem className="flex-1 max-w-xs">
-          <form onSubmit={handleSearch}>
-            <Input
-              classNames={{
-                base: "w-full",
-                mainWrapper: "h-9",
-                input: "text-sm text-white placeholder:text-white/30",
-                inputWrapper:
-                  "h-9 bg-white/5 border border-white/10 hover:border-white/20 focus-within:border-brand/50 rounded-xl transition-colors",
-              }}
-              placeholder="Search titles..."
-              startContent={<Search className="w-3.5 h-3.5 text-white/30 shrink-0" />}
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              type="search"
-            />
-          </form>
-        </NavbarItem>
         <NavbarItem className="hidden md:flex">
           <Chip
             size="sm"
