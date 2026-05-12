@@ -12,13 +12,14 @@ import {
   Button,
   Chip,
 } from "@heroui/react";
-import { Search, Film, Tv2, Sparkles, Home } from "lucide-react";
+import { Search, Film, Tv2, Sparkles, Home, LayoutDashboard } from "lucide-react";
 
 const NAV_LINKS = [
   { label: "Home", href: "/", icon: Home },
   { label: "Movies", href: "/?type=movie", icon: Film },
   { label: "Series", href: "/?type=series", icon: Tv2 },
   { label: "Anime", href: "/?type=anime", icon: Sparkles },
+  { label: "Admin", href: "/admin", icon: LayoutDashboard },
 ];
 
 export default function Navbar() {

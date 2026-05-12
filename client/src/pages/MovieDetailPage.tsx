@@ -60,12 +60,38 @@ export default function MovieDetailPage() {
   const seasonGroups = useMemo(() => {
     if (!movie?.links) return {} as Record<string, MovieLink[]>;
     const groups: Record<string, MovieLink[]> = {};
+    
     movie.links.forEach((link) => {
-      const key = link.season ? `Season ${link.season}` : "Downloads";
+      let key = "Downloads";
+      
+      if (link.season) {
+        key = `Season ${link.season}`;
+      } else {
+        // Fallback: Try to extract season from label (e.g., "Season 1 [1080p]" -> "Season 1")
+        const seasonMatch = link.label.match(/Season\s*(\d+)|S(\d+)/i);
+        if (seasonMatch) {
+          const sNum = seasonMatch[1] || seasonMatch[2];
+          key = `Season ${parseInt(sNum)}`;
+        } else if (link.label.toLowerCase().includes("movie")) {
+          key = "Movie";
+        }
+      }
+
       if (!groups[key]) groups[key] = [];
       groups[key].push(link);
     });
-    return groups;
+
+    // Sort keys so Season 1 comes before Season 2, etc.
+    const sortedKeys = Object.keys(groups).sort((a, b) => {
+      if (a === "Downloads") return 1;
+      if (b === "Downloads") return -1;
+      return a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' });
+    });
+
+    const sortedGroups: Record<string, MovieLink[]> = {};
+    sortedKeys.forEach(k => { sortedGroups[k] = groups[k]; });
+    
+    return sortedGroups;
   }, [movie]);
 
   const seasonNames = Object.keys(seasonGroups);

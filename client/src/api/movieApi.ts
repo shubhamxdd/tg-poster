@@ -13,6 +13,7 @@ export const movieApi = {
     genre?: string;
     language?: string;
     search?: string;
+    sortBy?: string;
     page?: number;
   }) => {
     const response = await api.get<MovieResponse>('/movies', { params });
@@ -25,6 +26,20 @@ export const movieApi = {
    */
   getMovieById: async (idOrSlug: string) => {
     const response = await api.get<Movie>(`/movies/${idOrSlug}`);
+    return response.data;
+  },
+
+  updateMovie: async (id: string, data: Partial<Movie>, password?: string) => {
+    const response = await api.put<Movie>(`/movies/${id}`, data, {
+      headers: { 'x-admin-password': password }
+    });
+    return response.data;
+  },
+
+  deleteMovie: async (id: string, password?: string) => {
+    const response = await api.delete(`/movies/${id}`, {
+      headers: { 'x-admin-password': password }
+    });
     return response.data;
   },
 };

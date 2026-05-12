@@ -6,8 +6,13 @@ import { generateMovieSlugFull } from "@/lib/utils";
 import {
   Button,
   Spinner,
+  Input,
+  Select,
+  SelectItem,
 } from "@heroui/react";
-import { Play, Download, Star } from "lucide-react";
+import { Play, Download, Star, Search, Filter, SortAsc } from "lucide-react";
+
+const GENRES = ["Action", "Adventure", "Animation", "Comedy", "Crime", "Drama", "Family", "Fantasy", "Horror", "Mystery", "Romance", "Sci-Fi", "Thriller"];
 
 export default function HomePage() {
   const [movies, setMovies] = useState<Movie[]>([]);
@@ -15,7 +20,10 @@ export default function HomePage() {
   const [loadingMore, setLoadingMore] = useState(false);
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  // Local state for UI components (synced to searchParams)
+  const [searchInput, setSearchInput] = useState(searchParams.get("search") || "");
 
   const fetchMovies = useCallback(
     async (isLoadMore = false) => {
@@ -26,7 +34,9 @@ export default function HomePage() {
         const currentPage = isLoadMore ? page + 1 : 1;
         const data = await movieApi.getMovies({
           type: searchParams.get("type") || undefined,
+          genre: searchParams.get("genre") || undefined,
           search: searchParams.get("search") || undefined,
+          sortBy: searchParams.get("sortBy") || "addedAt",
           page: currentPage,
         });
 
@@ -47,42 +57,129 @@ export default function HomePage() {
     [searchParams, page]
   );
 
-  useEffect(() => { fetchMovies(false); }, [searchParams]);
+  useEffect(() => {
+    fetchMovies(false);
+  }, [searchParams]);
+
+  // Debounced Search Effect
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (searchInput !== (searchParams.get("search") || "")) {
+        const newParams = new URLSearchParams(searchParams);
+        if (searchInput) newParams.set("search", searchInput);
+        else newParams.delete("search");
+        newParams.set("page", "1");
+        setSearchParams(newParams);
+      }
+    }, 500);
+    return () => clearTimeout(timer);
+  }, [searchInput]);
+
+  const updateParam = (key: string, value: string) => {
+    const newParams = new URLSearchParams(searchParams);
+    if (value && value !== "all") newParams.set(key, value);
+    else newParams.delete(key);
+    newParams.set("page", "1");
+    setSearchParams(newParams);
+  };
 
   const searchQuery = searchParams.get("search");
-  const typeFilter = searchParams.get("type");
-
-  if (loading) {
-    return (
-      <div className="min-h-screen flex flex-col items-center justify-center gap-6 pt-20">
-        <div className="relative">
-          <div className="w-20 h-20 rounded-2xl bg-brand/10 border border-brand/20 flex items-center justify-center animate-pulse">
-            <Play className="w-8 h-8 text-brand" />
-          </div>
-          <div className="absolute -inset-2 rounded-3xl border border-brand/10 animate-ping" />
-        </div>
-        <div className="text-center space-y-1">
-          <p className="font-display text-2xl tracking-wider text-white">LOADING VAULT</p>
-          <p className="text-white/40 text-sm">Fetching the latest content...</p>
-        </div>
-      </div>
-    );
-  }
 
   return (
-    <div className="pt-24 pb-24">
+    <div className="pt-24 pb-24 min-h-screen">
       <div className="container mx-auto px-4 md:px-8">
-        {/* Search result label only */}
-        {(searchQuery || typeFilter) && (
-          <div className="mb-6">
-            <h2 className="font-display text-2xl tracking-wider text-white/70">
-              {searchQuery ? `Results for "${searchQuery}"` : `${typeFilter!.charAt(0).toUpperCase() + typeFilter!.slice(1)}s`}
-            </h2>
+        
+        {/* Control Bar */}
+        <div className="flex flex-col lg:flex-row gap-4 mb-10 items-end lg:items-center">
+          <div className="w-full lg:max-w-md">
+            <Input
+              placeholder="Search movies, series..."
+              value={searchInput}
+              onValueChange={setSearchInput}
+              startContent={<Search className="text-white/30 w-4 h-4" />}
+              className="bg-white/5 border-white/10"
+              classNames={{
+                inputWrapper: "bg-white/5 border border-white/10 group-data-[focus=true]:border-brand/50 h-12",
+                input: "text-sm",
+              }}
+            />
           </div>
-        )}
 
-        {/* Grid */}
-        {movies.length > 0 ? (
+          <div className="flex flex-wrap gap-3 w-full lg:w-auto">
+            <Select
+              placeholder="Type"
+              selectedKeys={[searchParams.get("type") || "all"]}
+              onSelectionChange={(keys) => updateParam("type", Array.from(keys)[0] as string)}
+              className="w-32"
+              size="sm"
+              startContent={<Filter className="w-3 h-3 text-white/40" />}
+              classNames={{
+                trigger: "bg-white/5 border border-white/10 h-12",
+                value: "text-xs font-semibold text-white/70",
+              }}
+            >
+              <SelectItem key="all">All Types</SelectItem>
+              <SelectItem key="movie">Movies</SelectItem>
+              <SelectItem key="series">Series</SelectItem>
+              <SelectItem key="anime">Anime</SelectItem>
+            </Select>
+
+            <Select
+              placeholder="Genre"
+              selectedKeys={[searchParams.get("genre") || "all"]}
+              onSelectionChange={(keys) => updateParam("genre", Array.from(keys)[0] as string)}
+              className="w-40"
+              size="sm"
+              classNames={{
+                trigger: "bg-white/5 border border-white/10 h-12",
+                value: "text-xs font-semibold text-white/70",
+              }}
+            >
+              <SelectItem key="all">All Genres</SelectItem>
+              {GENRES.map(g => (
+                <SelectItem key={g}>{g}</SelectItem>
+              ))}
+            </Select>
+
+            <Select
+              placeholder="Sort By"
+              selectedKeys={[searchParams.get("sortBy") || "addedAt"]}
+              onSelectionChange={(keys) => updateParam("sortBy", Array.from(keys)[0] as string)}
+              className="w-44"
+              size="sm"
+              startContent={<SortAsc className="w-3 h-3 text-white/40" />}
+              classNames={{
+                trigger: "bg-white/5 border border-white/10 h-12",
+                value: "text-xs font-semibold text-white/70",
+              }}
+            >
+              <SelectItem key="addedAt">Date Added</SelectItem>
+              <SelectItem key="year">Release Year</SelectItem>
+              <SelectItem key="rating">Top Rated</SelectItem>
+              <SelectItem key="title">A - Z</SelectItem>
+            </Select>
+
+            {(searchQuery || searchParams.get("type") || searchParams.get("genre")) && (
+              <Button
+                variant="light"
+                onPress={() => {
+                  setSearchInput("");
+                  setSearchParams(new URLSearchParams());
+                }}
+                className="text-white/40 text-xs h-12 hover:text-white"
+              >
+                Clear Filters
+              </Button>
+            )}
+          </div>
+        </div>
+
+        {loading ? (
+          <div className="flex flex-col items-center justify-center py-40 gap-6">
+            <Spinner color="primary" size="lg" />
+            <p className="text-white/40 font-display tracking-widest text-sm uppercase">Refreshing Vault...</p>
+          </div>
+        ) : movies.length > 0 ? (
           <>
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4 md:gap-5">
               {movies.map((movie) => (
@@ -116,9 +213,12 @@ export default function HomePage() {
               </p>
             </div>
             <Button
-              as={Link}
-              to="/"
-              className="bg-brand hover:bg-brand-dark text-white font-bold px-10 rounded-full"
+              variant="flat"
+              onPress={() => {
+                setSearchInput("");
+                setSearchParams(new URLSearchParams());
+              }}
+              className="bg-white/10 hover:bg-white/20 text-white font-bold px-10 rounded-full"
             >
               Browse All
             </Button>
