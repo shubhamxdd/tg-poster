@@ -1,9 +1,28 @@
 import Movie from '../models/Movie.js';
 import mongoose from 'mongoose';
 
+/**
+ * Simple Admin Authentication Middleware
+ */
+export const adminAuth = (req, res, next) => {
+  const adminPassword = process.env.ADMIN_PASSWORD;
+  const providedPassword = req.headers['x-admin-password'];
+
+  if (!adminPassword) {
+    console.error('[AdminAuth] Error: ADMIN_PASSWORD is not set in environment variables.');
+    return res.status(500).json({ message: 'Server Configuration Error: Admin password not set' });
+  }
+
+  if (providedPassword !== adminPassword) {
+    console.warn(`[AdminAuth] Unauthorized access attempt from ${req.ip}`);
+    return res.status(401).json({ message: 'Unauthorized: Invalid Admin Password' });
+  }
+  next();
+};
+
 export const getMovies = async (req, res) => {
   try {
-    const { type, genre, language, search, page = 1, limit = 24 } = req.query;
+    const { type, genre, language, search, sortBy, page = 1, limit = 24 } = req.query;
     
     const query = {};
     if (type) query.type = type;
@@ -11,8 +30,14 @@ export const getMovies = async (req, res) => {
     if (language) query.language = language;
     if (search) query.title = { $regex: search, $options: 'i' };
 
+    let sortQuery = { addedAt: -1 }; // Default
+    if (sortBy === 'year') sortQuery = { year: -1, addedAt: -1 };
+    if (sortBy === 'rating') sortQuery = { rating: -1, addedAt: -1 };
+    if (sortBy === 'title') sortQuery = { title: 1 };
+    if (sortBy === 'addedAt') sortQuery = { addedAt: -1 };
+
     const movies = await Movie.find(query)
-      .sort({ addedAt: -1 })
+      .sort(sortQuery)
       .limit(limit * 1)
       .skip((page - 1) * limit)
       .exec();
@@ -77,6 +102,16 @@ export const deleteMovie = async (req, res) => {
     const movie = await Movie.findByIdAndDelete(req.params.id);
     if (!movie) return res.status(404).json({ message: 'Movie not found' });
     res.json({ message: 'Movie deleted successfully' });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+export const updateMovie = async (req, res) => {
+  try {
+    const movie = await Movie.findByIdAndUpdate(req.params.id, req.body, { new: true });
+    if (!movie) return res.status(404).json({ message: 'Movie not found' });
+    res.json({ message: 'Movie updated successfully', movie });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }

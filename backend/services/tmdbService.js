@@ -64,12 +64,14 @@ export const fetchFullDetailsFromTMDB = async (title, type, year) => {
 
     // Extract relevant info
     return {
+      tmdbId: String(tmdbId),
       poster: details.poster_path ? `${IMAGE_BASE_URL}${details.poster_path}` : null,
       backdrop: backdropPath ? `${BACKDROP_BASE_URL}${backdropPath}` : null,
       rating: details.vote_average ? details.vote_average.toFixed(1) : null,
       runtime: details.runtime || (details.episode_run_time ? details.episode_run_time[0] : null),
       status: details.status,
       year: yearFromTMDB,
+      language: details.spoken_languages?.[0]?.english_name || details.original_language,
       genre: details.genres?.map(g => g.name) || [],
       country: details.origin_country ? details.origin_country[0] : (details.production_countries ? details.production_countries[0]?.name : null),
       director: tmdbType === 'movie' 

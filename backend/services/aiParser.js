@@ -21,7 +21,7 @@ export const parseTelegramMessage = async (text) => {
 Extract every possible detail from the Telegram message provided below. 
 
 GUIDELINES:
-1. Title: Clean it (remove dots, years, resolution tags).
+1. Title: Clean it (remove dots, years, resolution tags, and season/episode tags like S01, S02, Season 1, Episode 1).
 2. Links: Identify ALL download/streaming links. 
    - Extract the FULL filename line associated with the link.
    - Links might NOT have http:// prefix (e.g. reddit.com). YOU MUST ADD "https://" if it is missing.
@@ -30,7 +30,7 @@ GUIDELINES:
    - Extract "size" (e.g. 1.2GB, 500MB).
    - Extract "language" (e.g. Hindi, English).
    - Extract "season" number if applicable.
-   - Create a "label" like "Season 1 [1080p]" or "Movie [Hindi]".
+   - Create a CLEAN "label". If it is a series, use "Season X [Quality]" (e.g. "Season 1 [1080p]"). If it is a movie, use "Movie [Quality]" or "Movie [Language]".
 3. Metadata: Look for "Director", "Language", "Year", "Status", and "Genre".
 4. Infer missing info from filenames/tags.
 

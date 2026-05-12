@@ -13,7 +13,10 @@ connectDB();
 const app = express();
 
 // Middleware
-app.use(cors());
+app.use(cors({
+  origin: '*', // Adjust for production if needed
+  allowedHeaders: ['Content-Type', 'Authorization', 'x-admin-password'],
+}));
 app.use(express.json());
 
 // Routes

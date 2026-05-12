@@ -65,6 +65,10 @@ const movieSchema = new mongoose.Schema({
     required: true,
     unique: true,
   },
+  tmdbId: {
+    type: String,
+    index: true,
+  },
   addedAt: {
     type: Date,
     default: Date.now,
