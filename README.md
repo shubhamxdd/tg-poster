@@ -1,20 +1,21 @@
 # 🎬 Movie Catalog Website - Auto-synced from Telegram
 
-A modern, fully automated movie and series catalog website that listens to a private Telegram channel, parses messages using AI, enriches metadata via TMDB, and displays everything on a sleek, Netflix-style React frontend.
+A modern, fully automated movie and series catalog website that listens to a private Telegram channel, parses messages using AI, enriches metadata via TMDB, and displays everything on a sleek, high-end React frontend.
 
 ## 🚀 Key Features
 
 -   **🤖 AI-Powered Parsing:** Uses Gemini 2.0 (via OpenRouter) to intelligently extract titles, seasons, qualities, and sizes from raw Telegram text.
 -   **📱 Real-time Sync:** Supports new messages and **edits**. Update a post in Telegram, and the site updates instantly.
 -   **🔄 Smart Deduplication:** Prevents duplicate entries by checking both Telegram Message IDs and show titles/years.
+-   **🔗 SEO Friendly URLs:** Uses a custom slug system (Title + Year + ID) for cleaner, more readable movie links.
 -   **📦 Season Tabs:** Automatically groups download links into interactive tabs by Season (Season 1, Season 2, etc.).
 -   **💾 Rich Metadata:** Displays full filenames, file sizes, resolutions, and audio languages.
 -   **🖼️ Metadata Enrichment:** Automatically pulls Cast (with photos), Directors, Ratings, Runtimes, and Posters from TMDB.
--   **🎨 Premium UI:** Built with React 19, Tailwind CSS, and Shadcn UI for a high-end, responsive dark-mode experience.
+-   **🎨 Premium UI:** Built with React 19, Tailwind CSS, and **HeroUI** for a cinematic, responsive dark-mode experience.
 
 ## 🛠️ Tech Stack
 
--   **Frontend:** Vite, React 19, Tailwind CSS, Shadcn UI, Lucide React.
+-   **Frontend:** Vite, React 19, Tailwind CSS, **HeroUI**, Lucide React.
 -   **Backend:** Node.js (ESM), Express, Mongoose.
 -   **Infrastructure:** Vercel (Serverless), MongoDB Atlas (Cloud Database).
 -   **AI:** Vercel AI SDK + OpenRouter.

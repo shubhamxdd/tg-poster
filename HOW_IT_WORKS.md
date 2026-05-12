@@ -12,7 +12,7 @@ When you post or edit a message in your Telegram channel, Telegram sends an **HT
 
 ---
 
-### 2. AI Parsing (Gemini 2.0)
+### 2. AI Parsing (Gemini 2.0 via OpenRouter)
 The raw Telegram text (which is often messy with dots and tags) is sent to the **AI Parser Service**.
 
 *   **Logic:** The AI is instructed to extract:
@@ -28,7 +28,7 @@ To make the site look like Netflix, the backend uses the **TMDB Service**.
 
 *   **Search:** It searches TMDB using the cleaned title and year.
 *   **Data Fetching:** It retrieves:
-    *   High-resolution **Posters**.
+    *   High-resolution **Posters** and **Backdrops**.
     *   **Top 10 Cast** members (names, characters, and profile photos).
     *   **Director** and **Rating**.
     *   Plot summaries and runtimes.
@@ -44,10 +44,11 @@ The system prevents duplicate entries to keep the catalog clean.
 
 ---
 
-### 5. Frontend Rendering (React 19)
-The user sees the data via a modern Vite + React frontend.
+### 5. Frontend Rendering (React 19 + HeroUI)
+The user sees the data via a high-performance frontend.
 
-*   **Relative Routing:** The frontend uses relative paths (`/api`) so it works on any domain without manual configuration.
+*   **Slug System:** For better SEO and cleaner URLs, the app uses a slug format: `title-year-id`. This allows users to share readable links like `/movie/inception-2010-abc123`.
+*   **UI Framework:** Powered by **HeroUI**, the app features a responsive, cinematic layout with animated loading spinners, hover effects, and modern avatars for the cast.
 *   **Season Grouping:** On the detail page, a `useMemo` hook instantly groups the links into Tabs by Season number.
 *   **Proxy:** During local development, `vite.config.ts` uses a proxy to forward requests to the local Node.js server.
 
@@ -57,7 +58,7 @@ The user sees the data via a modern Vite + React frontend.
 The app runs as a unified monorepo on Vercel.
 
 *   **Bridge:** `api/index.js` acts as a bridge, importing the Express app into Vercel's serverless environment.
-*   **Build Script:** The root `package.json` builds the React app and moves it to the root `dist` folder so Vercel can serve it as static content alongside the API functions.
+*   **Manual Build:** The root `package.json` build script compiles the React app and moves it to the root `dist` folder, ensuring Vercel serves the entire site from a single output directory while maintaining API access.
 
 ---
 *Generated: May 2026*
