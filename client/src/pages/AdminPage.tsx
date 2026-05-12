@@ -34,29 +34,43 @@ export default function AdminPage() {
   
   // Auth Check
   useEffect(() => {
-    const savedPass = localStorage.getItem("admin_pass");
-    if (savedPass) {
-      setPassword(savedPass);
-      setIsLoggedIn(true);
-      fetchMovies();
-    }
+    const checkAuth = async () => {
+      const savedPass = localStorage.getItem("admin_pass");
+      if (savedPass) {
+        try {
+          await movieApi.verifyAdmin(savedPass);
+          setPassword(savedPass);
+          setIsLoggedIn(true);
+          fetchMovies(savedPass);
+        } catch (error) {
+          localStorage.removeItem("admin_pass");
+        }
+      }
+    };
+    checkAuth();
   }, []);
 
-  const handleLogin = () => {
-    localStorage.setItem("admin_pass", password);
-    setIsLoggedIn(true);
-    fetchMovies();
+  const handleLogin = async () => {
+    try {
+      await movieApi.verifyAdmin(password);
+      localStorage.setItem("admin_pass", password);
+      setIsLoggedIn(true);
+      fetchMovies(password);
+    } catch (error: any) {
+      alert(error.response?.data?.message || "Authentication failed");
+    }
   };
 
-  const fetchMovies = async () => {
+  const fetchMovies = async (pass?: string) => {
+    const currentPass = pass || password;
     setLoading(true);
     try {
+      // Use any protected route to verify pass while fetching if needed, 
+      // but getMovies is public. We just fetch items here.
       const data = await movieApi.getMovies({ limit: 100 });
       setMovies(data.movies);
     } catch (error) {
       console.error(error);
-      setIsLoggedIn(false);
-      localStorage.removeItem("admin_pass");
     } finally {
       setLoading(false);
     }

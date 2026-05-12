@@ -1,10 +1,13 @@
 import express from 'express';
-import { getMovies, getMovieById, deleteMovie, updateMovie, adminAuth } from '../controllers/movieController.js';
+import { getMovies, getMovieById, deleteMovie, updateMovie, adminAuth, verifyAdmin } from '../controllers/movieController.js';
 
 const router = express.Router();
 
 router.get('/', getMovies);
 router.get('/:id', getMovieById);
+
+// Admin Authentication Verification
+router.post('/admin/verify', adminAuth, verifyAdmin);
 
 // Admin Protected Routes
 router.put('/:id', adminAuth, updateMovie);

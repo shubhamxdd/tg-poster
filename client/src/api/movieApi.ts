@@ -29,6 +29,13 @@ export const movieApi = {
     return response.data;
   },
 
+  verifyAdmin: async (password: string) => {
+    const response = await api.post('/movies/admin/verify', {}, {
+      headers: { 'x-admin-password': password }
+    });
+    return response.data;
+  },
+
   updateMovie: async (id: string, data: Partial<Movie>, password?: string) => {
     const response = await api.put<Movie>(`/movies/${id}`, data, {
       headers: { 'x-admin-password': password }

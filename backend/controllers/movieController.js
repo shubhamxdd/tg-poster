@@ -116,3 +116,7 @@ export const updateMovie = async (req, res) => {
     res.status(500).json({ message: error.message });
   }
 };
+
+export const verifyAdmin = async (req, res) => {
+  res.json({ success: true, message: 'Authenticated successfully' });
+};
