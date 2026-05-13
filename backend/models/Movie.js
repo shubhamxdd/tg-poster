@@ -24,6 +24,7 @@ const movieSchema = new mongoose.Schema({
     size: String,         // e.g. "19.76GB"
     language: String,     // e.g. "Hindi", "English"
     season: Number,       // e.g. 1, 2
+    episode: Number,      // e.g. 1, 2 (for episode-wise links)
     filename: String      // The full raw filename line
   }],
   poster: {
@@ -45,6 +46,10 @@ const movieSchema = new mongoose.Schema({
   language: {
     type: String,
     default: 'Unknown',
+  },
+  audio: {
+    type: [String],
+    default: [],
   },
   description: {
     type: String,

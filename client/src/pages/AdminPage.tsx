@@ -123,6 +123,7 @@ export default function AdminPage() {
           ...(data.director   && { director:   data.director }),
           ...(data.year       && { year:       data.year }),
           ...(data.language   && { language:   data.language }),
+          ...(data.audio?.length && { audio: data.audio }),
           ...(data.description && { description: data.description }),
           ...(data.genre?.length && { genre:  data.genre }),
           ...(data.cast?.length  && { cast:   data.cast }),
@@ -445,6 +446,16 @@ export default function AdminPage() {
                           variant="bordered"
                           value={selectedMovie.language} 
                           onValueChange={(v) => setSelectedMovie({...selectedMovie, language: v})} 
+                        />
+                        <Input 
+                          label="Audio (comma-separated)" 
+                          variant="bordered"
+                          placeholder="e.g. Hindi, English, Tamil"
+                          value={(selectedMovie.audio || []).join(", ")} 
+                          onValueChange={(v) => setSelectedMovie({
+                            ...selectedMovie, 
+                            audio: v.split(",").map(s => s.trim()).filter(Boolean)
+                          })} 
                         />
                         <Textarea 
                           label="Description" 

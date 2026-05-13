@@ -30,9 +30,11 @@ GUIDELINES:
    - Extract "size" (e.g. 1.2GB, 500MB).
    - Extract "language" (e.g. Hindi, English).
    - Extract "season" number if applicable.
-   - Create a CLEAN "label". If it is a series, use "Season X [Quality]" (e.g. "Season 1 [1080p]"). If it is a movie, use "Movie [Quality]" or "Movie [Language]".
+   - Extract "episode" number if the link is for a specific episode (e.g. E01, Episode 1, Ep1). If the link covers a full season leave episode as null.
+   - Create a CLEAN "label" with ONLY the season/episode identifier — no quality, no tags, no brackets. For episode-wise: use "S01E01" (e.g. "S02E05"). For full season: use "Season 1". For movie: use "Movie".
 3. Metadata: Look for "Director", "Language", "Year", "Status", and "Genre".
-4. Infer missing info from filenames/tags.
+4. Audio: If message has "Audio:", "Language:", or similar with multiple languages (e.g. "Hindi, English & Tamil"), extract ALL of them into the "audio" array (e.g. ["Hindi", "English", "Tamil"]). The "language" field should be the primary/original language only.
+5. Infer missing info from filenames/tags.
 
 Return ONLY a valid JSON object.
 
@@ -42,18 +44,20 @@ Required JSON Structure:
   "type": "movie" | "series" | "anime",
   "links": [
     { 
-      "label": "S01 [1080p]", 
+      "label": "S01E01", 
       "url": "url1", 
       "quality": "1080p", 
       "size": "19.76GB", 
       "language": "Hindi", 
       "season": 1,
-      "filename": "My.Dress-Up.Darling.S01.1080p.CR.WEB-DL..."
+      "episode": 1,
+      "filename": "My.Dress-Up.Darling.S01E01.1080p.CR.WEB-DL..."
     }
   ],
   "genre": ["Genre1"],
   "year": 2024,
   "language": "Language",
+  "audio": ["Hindi", "English", "Tamil"],
   "director": "Director Name",
   "status": "Ongoing / Ended",
   "description": "Summary"
@@ -87,6 +91,7 @@ Telegram Message:
         size: l.size || '',
         language: l.language || '',
         season: Number(l.season) || null,
+        episode: Number(l.episode) || null,
         filename: l.filename || ''
       })).filter(l => l.url);
     }
@@ -109,7 +114,8 @@ Telegram Message:
       language: movieData.language && movieData.language !== 'Unknown' ? movieData.language : '',
       director: movieData.director && movieData.director !== 'N/A' && movieData.director !== 'Unknown' ? movieData.director : '',
       status: movieData.status && movieData.status !== 'Unknown' ? movieData.status : '',
-      description: (movieData.description && movieData.description !== 'Summary') ? movieData.description : ''
+      description: (movieData.description && movieData.description !== 'Summary') ? movieData.description : '',
+      audio: Array.isArray(movieData.audio) && movieData.audio.length > 0 ? movieData.audio : [],
     };
   } catch (error) {
     console.error('[AI Parser] Error:', error.message);

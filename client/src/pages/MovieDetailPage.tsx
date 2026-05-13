@@ -89,7 +89,15 @@ export default function MovieDetailPage() {
     });
 
     const sortedGroups: Record<string, MovieLink[]> = {};
-    sortedKeys.forEach(k => { sortedGroups[k] = groups[k]; });
+    // Sort links within each group: episode-wise first (by episode number), then non-episode
+    sortedKeys.forEach(k => {
+      sortedGroups[k] = groups[k].sort((a, b) => {
+        if (a.episode && b.episode) return a.episode - b.episode;
+        if (a.episode) return -1;
+        if (b.episode) return 1;
+        return 0;
+      });
+    });
     
     return sortedGroups;
   }, [movie]);
@@ -256,12 +264,12 @@ export default function MovieDetailPage() {
                     </span>
                   </>
                 )}
-                {movie.language && (
+                {(movie.audio?.length ? movie.audio : movie.language ? [movie.language] : []).length > 0 && (
                   <>
                     <span className="w-1 h-1 rounded-full bg-white/20" />
                     <span className="flex items-center gap-1.5">
                       <Languages className="w-3.5 h-3.5 text-brand" />
-                      {movie.language}
+                      {movie.audio?.length ? movie.audio.join(" · ") : movie.language}
                     </span>
                   </>
                 )}
@@ -415,6 +423,18 @@ export default function MovieDetailPage() {
                 {movie.country && <InfoRow label="Country" value={movie.country} />}
                 {movie.status && <InfoRow label="Status" value={movie.status} valueClass="text-emerald-400" />}
               </div>
+              {movie.audio && movie.audio.length > 0 && (
+                <div className="space-y-2">
+                  <p className="text-[10px] uppercase tracking-[0.2em] text-white/30 font-medium">Audio</p>
+                  <div className="flex flex-wrap gap-2">
+                    {movie.audio.map((lang) => (
+                      <span key={lang} className="px-3 py-1 rounded-full text-xs font-semibold bg-brand/10 text-brand border border-brand/20">
+                        {lang}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
               <Divider className="bg-white/5" />
               <div>
                 <p className="text-[10px] uppercase tracking-[0.2em] text-white/30 mb-3 font-medium">Genres</p>
@@ -448,6 +468,38 @@ function DownloadRow({
   link: MovieLink;
   onDownload: (url: string) => void;
 }) {
+  // Parse technical tags from filename — skip anything already shown as quality badge
+  const getTechTags = (filename: string) => {
+    if (!filename) return [];
+    const f = filename.toUpperCase();
+    const q = (link.quality || '').toUpperCase();
+
+    const tags: { label: string; color: string }[] = [];
+
+    if (f.includes('REMUX'))
+      tags.push({ label: 'REMUX', color: 'bg-purple-500/10 border-purple-500/20 text-purple-400' });
+
+    if (f.includes('DV') || f.includes('DOLBY VISION') || f.includes('DOVI'))
+      tags.push({ label: 'DV', color: 'bg-pink-500/10 border-pink-500/20 text-pink-400' });
+
+    if (f.includes('HDR10+'))
+      tags.push({ label: 'HDR10+', color: 'bg-orange-500/10 border-orange-500/20 text-orange-400' });
+    else if (f.includes('HDR'))
+      tags.push({ label: 'HDR', color: 'bg-orange-500/10 border-orange-500/20 text-orange-400' });
+
+    if (f.includes('AV1') && !q.includes('AV1'))
+      tags.push({ label: 'AV1', color: 'bg-cyan-500/10 border-cyan-500/20 text-cyan-400' });
+    else if ((f.includes('HEVC') || f.includes('H.265') || f.includes('H265') || f.includes('X265')) && !q.includes('H.265') && !q.includes('HEVC'))
+      tags.push({ label: 'H.265', color: 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400' });
+    else if ((f.includes('H.264') || f.includes('H264') || f.includes('X264')) && !q.includes('H.264'))
+      tags.push({ label: 'H.264', color: 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400' });
+
+    return tags;
+  };
+
+  const techTags = getTechTags(link.filename || '');
+  const showQuality = !!link.quality;
+
   return (
     <Card className="bg-[#111215] border border-white/8 hover:border-brand/25 hover:bg-[#16181C] transition-all rounded-2xl group">
       <CardBody className="flex-row items-center justify-between gap-4 p-5">
@@ -461,7 +513,12 @@ function DownloadRow({
               <p className="text-[11px] text-white/30 truncate italic mt-0.5">{link.filename}</p>
             )}
             <div className="flex flex-wrap gap-1.5 mt-2">
-              {link.quality && (
+              {link.episode && (
+                <span className="text-[9px] font-bold uppercase tracking-widest bg-brand/10 border border-brand/20 text-brand px-2 py-0.5 rounded">
+                  Ep {link.episode}
+                </span>
+              )}
+              {showQuality && (
                 <span className="text-[9px] font-bold uppercase tracking-widest bg-amber-500/10 border border-amber-500/20 text-amber-400 px-2 py-0.5 rounded">
                   {link.quality}
                 </span>
@@ -478,6 +535,11 @@ function DownloadRow({
                   {link.language}
                 </span>
               )}
+              {techTags.map((tag) => (
+                <span key={tag.label} className={`text-[9px] font-bold uppercase tracking-widest border px-2 py-0.5 rounded ${tag.color}`}>
+                  {tag.label}
+                </span>
+              ))}
             </div>
           </div>
         </div>
