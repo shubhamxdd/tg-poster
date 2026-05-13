@@ -353,7 +353,7 @@ export default function MovieDetailPage() {
                   <Tab key={name} title={name}>
                     <div className="space-y-3">
                       {seasonGroups[name].map((link, idx) => (
-                        <DownloadRow key={idx} link={link} onDownload={handleDownload} />
+                        <DownloadRow key={idx} link={link} onDownload={handleDownload} movieAudio={movie.audio} movieLanguage={movie.language} />
                       ))}
                     </div>
                   </Tab>
@@ -362,7 +362,7 @@ export default function MovieDetailPage() {
             ) : seasonNames.length === 1 ? (
               <div className="space-y-3">
                 {seasonGroups[seasonNames[0]].map((link, idx) => (
-                  <DownloadRow key={idx} link={link} onDownload={handleDownload} />
+                  <DownloadRow key={idx} link={link} onDownload={handleDownload} movieAudio={movie.audio} movieLanguage={movie.language} />
                 ))}
               </div>
             ) : (
@@ -417,18 +417,18 @@ export default function MovieDetailPage() {
               )}
               <div className="grid grid-cols-2 gap-4">
                 <InfoRow label="Year" value={String(movie.year || "N/A")} />
-                <InfoRow label="Language" value={movie.language || "N/A"} />
                 <InfoRow label="Type" value={movie.type} valueClass="text-brand" />
                 {movie.runtime && <InfoRow label="Runtime" value={`${movie.runtime}m`} />}
                 {movie.country && <InfoRow label="Country" value={movie.country} />}
                 {movie.status && <InfoRow label="Status" value={movie.status} valueClass="text-emerald-400" />}
               </div>
-              {movie.audio && movie.audio.length > 0 && (
+              {(movie.audio?.length || movie.language) && (
                 <div className="space-y-2">
-                  <p className="text-[10px] uppercase tracking-[0.2em] text-white/30 font-medium">Audio</p>
+                  <p className="text-[10px] uppercase tracking-[0.2em] text-white/30 font-medium">Audio / Language</p>
                   <div className="flex flex-wrap gap-2">
-                    {movie.audio.map((lang) => (
-                      <span key={lang} className="px-3 py-1 rounded-full text-xs font-semibold bg-brand/10 text-brand border border-brand/20">
+                    {(movie.audio?.length ? movie.audio : movie.language ? [movie.language] : []).map((lang) => (
+                      <span key={lang} className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest px-2.5 py-1 rounded-lg bg-brand/10 text-brand border border-brand/20">
+                        <Languages className="w-3 h-3" />
                         {lang}
                       </span>
                     ))}
@@ -464,9 +464,13 @@ export default function MovieDetailPage() {
 function DownloadRow({
   link,
   onDownload,
+  movieAudio,
+  movieLanguage,
 }: {
   link: MovieLink;
   onDownload: (url: string) => void;
+  movieAudio?: string[];
+  movieLanguage?: string;
 }) {
   // Parse technical tags from filename — skip anything already shown as quality badge
   const getTechTags = (filename: string) => {
@@ -535,6 +539,12 @@ function DownloadRow({
                   {link.language}
                 </span>
               )}
+              {(movieAudio?.length ? movieAudio : movieLanguage ? [movieLanguage] : []).map((lang) => (
+                <span key={lang} className="flex items-center gap-1 text-[9px] font-bold uppercase tracking-widest bg-brand/10 border border-brand/20 text-brand px-2 py-0.5 rounded">
+                  <Languages className="w-2.5 h-2.5" />
+                  {lang}
+                </span>
+              ))}
               {techTags.map((tag) => (
                 <span key={tag.label} className={`text-[9px] font-bold uppercase tracking-widest border px-2 py-0.5 rounded ${tag.color}`}>
                   {tag.label}
