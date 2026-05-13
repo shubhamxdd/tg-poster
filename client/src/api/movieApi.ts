@@ -62,4 +62,31 @@ export const movieApi = {
     });
     return response.data;
   },
+
+  /**
+   * Streams bulk description updates for all movies missing a description.
+   * Calls onProgress for each line, returns final summary.
+   */
+  bulkUpdateDescriptions: async (
+    password: string,
+    onProgress: (line: { type: string; title?: string; status?: string; updated?: number; failed?: number; total?: number }) => void
+  ) => {
+    const response = await fetch('/api/movies/admin/bulk-update-descriptions', {
+      method: 'POST',
+      headers: { 'x-admin-password': password },
+    });
+    const reader = response.body!.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop()!;
+      for (const line of lines) {
+        if (line.trim()) onProgress(JSON.parse(line));
+      }
+    }
+  },
 };

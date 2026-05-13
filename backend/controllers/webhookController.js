@@ -51,7 +51,7 @@ export const handleTelegramWebhook = async (req, res) => {
     // 2. TMDB Fetch (Essential for grouping)
     console.log(`[TMDB] Searching for: ${movieData.title}`);
     const tmdbDetails = await fetchFullDetailsFromTMDB(movieData.title, movieData.type, movieData.year);
-    if (tmdbDetails) console.log(`[TMDB] Found! ID: ${tmdbDetails.tmdbId} | Real Title: ${tmdbDetails.title || movieData.title}`);
+    if (tmdbDetails) console.log(`[TMDB] Found! ID: ${tmdbDetails.tmdbId} | Real Title: ${tmdbDetails.title || movieData.title} | Description: ${tmdbDetails.description ? 'YES (' + tmdbDetails.description.substring(0, 40) + '...)' : 'MISSING'}`);
 
     // 3. Find Existing Movie
     let existingMovie = await Movie.findOne({ telegramMsgId: msgId });
@@ -78,7 +78,7 @@ export const handleTelegramWebhook = async (req, res) => {
     posterUrl = posterUrl || tmdbDetails?.poster || existingMovie?.poster || '';
 
     // 5. Merge Strategy
-    const tmdbOwned = ['genre', 'director', 'cast', 'rating', 'runtime', 'status', 'backdrop', 'country', 'year'];
+    const tmdbOwned = ['genre', 'director', 'cast', 'rating', 'runtime', 'status', 'backdrop', 'country', 'year', 'originalTitle'];
     const cleanMovieData = Object.fromEntries(
       Object.entries(movieData).filter(([key, v]) => {
         if (tmdbOwned.includes(key) && tmdbDetails?.[key] != null) return false;
@@ -97,6 +97,11 @@ export const handleTelegramWebhook = async (req, res) => {
       telegramMsgId: msgId,
     };
 
+    // Always use TMDB overview as description — no fallbacks, no conditions
+    if (tmdbDetails?.description) {
+      mergedData.description = tmdbDetails.description;
+    }
+
     if (existingMovie) {
       console.log(`[Webhook] Merging into existing movie: ${existingMovie.title}`);
       
@@ -104,6 +109,8 @@ export const handleTelegramWebhook = async (req, res) => {
       mergedData.title = existingMovie.title;
       mergedData.type = existingMovie.type;
       mergedData.tmdbId = existingMovie.tmdbId || tmdbDetails?.tmdbId;
+      // Always update originalTitle from TMDB if available
+      if (tmdbDetails?.originalTitle) mergedData.originalTitle = tmdbDetails.originalTitle;
 
       // Merge Links surgery - handle separately from .set()
       const currentLinks = existingMovie.links || [];
@@ -132,6 +139,8 @@ export const handleTelegramWebhook = async (req, res) => {
       res.status(200).json({ success: true, action: 'updated', movie: existingMovie });
     } else {
       console.log(`[Webhook] Creating NEW entry: ${movieData.title}`);
+      // Use TMDB's clean title for new entries if available
+      if (tmdbDetails?.title) mergedData.title = tmdbDetails.title;
       const newMovie = new Movie(mergedData);
       await newMovie.save();
       console.log(`[Webhook] Successfully CREATED: ${newMovie.title}`);

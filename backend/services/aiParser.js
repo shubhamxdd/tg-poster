@@ -109,7 +109,7 @@ Telegram Message:
       language: movieData.language && movieData.language !== 'Unknown' ? movieData.language : '',
       director: movieData.director && movieData.director !== 'N/A' && movieData.director !== 'Unknown' ? movieData.director : '',
       status: movieData.status && movieData.status !== 'Unknown' ? movieData.status : '',
-      description: movieData.description || ''
+      description: (movieData.description && movieData.description !== 'Summary') ? movieData.description : ''
     };
   } catch (error) {
     console.error('[AI Parser] Error:', error.message);

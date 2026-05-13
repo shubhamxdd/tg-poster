@@ -22,7 +22,7 @@ import {
   Select,
   SelectItem,
 } from "@heroui/react";
-import { Edit, Trash2, Lock, LayoutDashboard, ExternalLink, Plus, X, Wand2, Search } from "lucide-react";
+import { Edit, Trash2, Lock, LayoutDashboard, ExternalLink, Plus, X, Wand2, Search, RefreshCw } from "lucide-react";
 
 export default function AdminPage() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
@@ -33,6 +33,9 @@ export default function AdminPage() {
   const [tmdbUrl, setTmdbUrl] = useState("");
   const [tmdbLoading, setTmdbLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
+  const [bulkRunning, setBulkRunning] = useState(false);
+  const [bulkLog, setBulkLog] = useState<{ title: string; status: string }[]>([]);
+  const [bulkSummary, setBulkSummary] = useState<{ updated: number; failed: number; total: number } | null>(null);
   const { isOpen, onOpen, onOpenChange } = useDisclosure();
   
   // Auth Check
@@ -110,7 +113,8 @@ export default function AdminPage() {
         if (!prev) return prev;
         return {
           ...prev,
-          ...(data.title      && { title:     data.title }),
+          ...(data.title      && { title:         data.title }),
+          ...(data.originalTitle && { originalTitle: data.originalTitle }),
           ...(data.poster     && { poster:     data.poster }),
           ...(data.backdrop   && { backdrop:   data.backdrop }),
           ...(data.rating     && { rating:     data.rating }),
@@ -129,6 +133,26 @@ export default function AdminPage() {
       alert(error.response?.data?.message || "Failed to fetch from TMDB");
     } finally {
       setTmdbLoading(false);
+    }
+  };
+
+  const handleBulkUpdate = async () => {
+    if (!window.confirm("This will fetch descriptions from TMDB for all entries missing one. Continue?")) return;
+    setBulkRunning(true);
+    setBulkLog([]);
+    setBulkSummary(null);
+    try {
+      await movieApi.bulkUpdateDescriptions(password, (line) => {
+        if (line.type === "progress") {
+          setBulkLog((prev) => [...prev, { title: line.title!, status: line.status! }]);
+        } else if (line.type === "done") {
+          setBulkSummary({ updated: line.updated!, failed: line.failed!, total: line.total! });
+        }
+      });
+    } catch (e: any) {
+      alert("Bulk update failed: " + e.message);
+    } finally {
+      setBulkRunning(false);
     }
   };
 
@@ -209,17 +233,54 @@ export default function AdminPage() {
               <p className="text-white/40 text-xs uppercase tracking-tighter">Total Items: {movies.length}</p>
             </div>
           </div>
-          <Button 
-            variant="flat" 
-            onPress={() => {
-              localStorage.removeItem("admin_pass");
-              setIsLoggedIn(false);
-            }}
-            className="text-white/40 hover:text-red-400"
-          >
-            Logout
-          </Button>
+          <div className="flex items-center gap-3">
+            <Button
+              variant="flat"
+              isLoading={bulkRunning}
+              onPress={handleBulkUpdate}
+              startContent={!bulkRunning && <RefreshCw className="w-4 h-4" />}
+              className="text-white/40 hover:text-brand border border-white/10 bg-white/5 text-xs"
+            >
+              {bulkRunning ? "Updating…" : "Bulk Fix Descriptions"}
+            </Button>
+            <Button 
+              variant="flat" 
+              onPress={() => {
+                localStorage.removeItem("admin_pass");
+                setIsLoggedIn(false);
+              }}
+              className="text-white/40 hover:text-red-400"
+            >
+              Logout
+            </Button>
+          </div>
         </div>
+
+        {/* Bulk update progress */}
+        {(bulkLog.length > 0 || bulkSummary) && (
+          <div className="mb-6 p-4 rounded-xl bg-white/5 border border-white/10 space-y-2">
+            {bulkSummary ? (
+              <p className="text-sm font-bold text-white/70">
+                ✅ Done — <span className="text-green-400">{bulkSummary.updated} updated</span>
+                {bulkSummary.failed > 0 && <span className="text-red-400"> · {bulkSummary.failed} failed</span>}
+                <span className="text-white/30"> · {bulkSummary.total} total processed</span>
+              </p>
+            ) : (
+              <p className="text-xs text-white/30 uppercase tracking-widest">Updating descriptions…</p>
+            )}
+            <div className="max-h-40 overflow-y-auto space-y-1 custom-scrollbar">
+              {bulkLog.map((entry, i) => (
+                <div key={i} className="flex items-center gap-2 text-xs">
+                  <span className={entry.status === "updated" ? "text-green-400" : "text-red-400"}>
+                    {entry.status === "updated" ? "✓" : "✗"}
+                  </span>
+                  <span className="text-white/50 truncate">{entry.title}</span>
+                  <span className="text-white/20 ml-auto shrink-0">{entry.status}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* Search Bar */}
         <div className="mb-6">
@@ -352,6 +413,13 @@ export default function AdminPage() {
                           variant="bordered"
                           value={selectedMovie.title} 
                           onValueChange={(v) => setSelectedMovie({...selectedMovie, title: v})} 
+                        />
+                        <Input 
+                          label="Original Title" 
+                          variant="bordered"
+                          placeholder="e.g. 呪術廻戦 or Parasite Korean title"
+                          value={selectedMovie.originalTitle || ""} 
+                          onValueChange={(v) => setSelectedMovie({...selectedMovie, originalTitle: v})} 
                         />
                         <div className="grid grid-cols-2 gap-4">
                           <Input 

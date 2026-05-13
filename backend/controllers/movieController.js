@@ -56,6 +56,7 @@ export const fetchFromTmdbUrl = async (req, res) => {
     const data = {
       tmdbId: String(tmdbId),
       title: details.title || details.name,
+      originalTitle: details.original_title || details.original_name || null,
       type: tmdbType === 'tv' ? 'series' : 'movie',
       poster: details.poster_path ? `${IMAGE_BASE_URL}${details.poster_path}` : null,
       backdrop: backdropPath ? `${BACKDROP_BASE_URL}${backdropPath}` : null,
@@ -206,4 +207,72 @@ export const updateMovie = async (req, res) => {
 
 export const verifyAdmin = async (req, res) => {
   res.json({ success: true, message: 'Authenticated successfully' });
+};
+
+/**
+ * Bulk-fetches description from TMDB for all movies that have a tmdbId
+ * but are missing a description (or have an empty one).
+ * Streams progress as newline-delimited JSON.
+ */
+export const bulkUpdateDescriptions = async (req, res) => {
+  const apiKey = process.env.TMDB_API_KEY;
+  if (!apiKey || apiKey === 'your_tmdb_api_key') {
+    return res.status(503).json({ message: 'TMDB API key not configured on server' });
+  }
+
+  // Find all movies missing description but having a tmdbId
+  const movies = await Movie.find({
+    tmdbId: { $exists: true, $ne: null, $ne: '' },
+    $or: [
+      { description: { $exists: false } },
+      { description: null },
+      { description: '' },
+      { originalTitle: { $exists: false } },
+      { originalTitle: null },
+      { originalTitle: '' },
+    ],
+  }).select('_id title tmdbId type').lean();
+
+  // Set up streaming response
+  res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+  res.setHeader('Transfer-Encoding', 'chunked');
+  res.write(JSON.stringify({ type: 'start', total: movies.length }) + '\n');
+
+  let updated = 0;
+  let failed = 0;
+
+  for (const movie of movies) {
+    try {
+      const tmdbType = movie.type === 'series' || movie.type === 'anime' ? 'tv' : 'movie';
+      const detailRes = await axios.get(
+        `https://api.themoviedb.org/3/${tmdbType}/${movie.tmdbId}`,
+        { params: { api_key: apiKey, language: 'en-US' } }
+      );
+      const overview = detailRes.data?.overview || null;
+      const tmdbTitle = detailRes.data?.title || detailRes.data?.name || null;
+      const tmdbOriginalTitle = detailRes.data?.original_title || detailRes.data?.original_name || null;
+      if (overview || tmdbTitle || tmdbOriginalTitle) {
+        const updateFields = {};
+        if (overview) updateFields.description = overview;
+        if (tmdbOriginalTitle) updateFields.originalTitle = tmdbOriginalTitle;
+        // Update title from TMDB only if not already set correctly
+        if (tmdbTitle && (!movie.title || movie.title === 'Unknown Title')) updateFields.title = tmdbTitle;
+        await Movie.findByIdAndUpdate(movie._id, updateFields);
+        updated++;
+        res.write(JSON.stringify({ type: 'progress', title: movie.title, status: 'updated' }) + '\n');
+      } else {
+        failed++;
+        res.write(JSON.stringify({ type: 'progress', title: movie.title, status: 'no_overview' }) + '\n');
+      }
+    } catch (err) {
+      failed++;
+      res.write(JSON.stringify({ type: 'progress', title: movie.title, status: 'error', error: err.message }) + '\n');
+    }
+
+    // Small delay to avoid TMDB rate limits
+    await new Promise(r => setTimeout(r, 250));
+  }
+
+  res.write(JSON.stringify({ type: 'done', updated, failed, total: movies.length }) + '\n');
+  res.end();
 };

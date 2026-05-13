@@ -5,6 +5,10 @@ const movieSchema = new mongoose.Schema({
     type: String,
     required: true,
   },
+  originalTitle: {
+    type: String,
+    default: '',
+  },
   type: {
     type: String,
     enum: ['movie', 'series', 'anime'],

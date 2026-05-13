@@ -40,7 +40,7 @@ export const fetchFullDetailsFromTMDB = async (title, type, year) => {
     // 2. Fetch full details, credits, and images
     const detailEndpoint = `${TMDB_BASE_URL}/${tmdbType}/${tmdbId}`;
     const [detailRes, creditRes, imagesRes] = await Promise.all([
-      axios.get(detailEndpoint, { params: { api_key: apiKey } }),
+      axios.get(detailEndpoint, { params: { api_key: apiKey, language: 'en-US' } }),
       axios.get(`${detailEndpoint}/credits`, { params: { api_key: apiKey } }),
       // include_image_language=null fetches text-free backdrops; include en too as fallback
       axios.get(`${detailEndpoint}/images`, { params: { api_key: apiKey, include_image_language: 'null,en' } })
@@ -65,6 +65,8 @@ export const fetchFullDetailsFromTMDB = async (title, type, year) => {
     // Extract relevant info
     return {
       tmdbId: String(tmdbId),
+      title: details.title || details.name || null,
+      originalTitle: details.original_title || details.original_name || null,
       poster: details.poster_path ? `${IMAGE_BASE_URL}${details.poster_path}` : null,
       backdrop: backdropPath ? `${BACKDROP_BASE_URL}${backdropPath}` : null,
       rating: details.vote_average ? details.vote_average.toFixed(1) : null,
@@ -81,7 +83,8 @@ export const fetchFullDetailsFromTMDB = async (title, type, year) => {
         name: c.name,
         character: c.character,
         profile_path: c.profile_path ? `${IMAGE_BASE_URL}${c.profile_path}` : null
-      })) || []
+      })) || [],
+      description: details.overview || null,
     };
 
   } catch (error) {

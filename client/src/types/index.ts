@@ -17,6 +17,7 @@ export type Cast = {
 export type Movie = {
   _id: string;
   title: string;
+  originalTitle?: string;
   type: 'movie' | 'series' | 'anime';
   links: Link[];
   link: string; // fallback

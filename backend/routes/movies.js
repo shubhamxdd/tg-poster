@@ -1,10 +1,11 @@
 import express from 'express';
-import { getMovies, getMovieById, deleteMovie, updateMovie, adminAuth, verifyAdmin, fetchFromTmdbUrl } from '../controllers/movieController.js';
+import { getMovies, getMovieById, deleteMovie, updateMovie, adminAuth, verifyAdmin, fetchFromTmdbUrl, bulkUpdateDescriptions } from '../controllers/movieController.js';
 
 const router = express.Router();
 
 router.get('/', getMovies);
 router.get('/admin/tmdb-fetch', adminAuth, fetchFromTmdbUrl);
+router.post('/admin/bulk-update-descriptions', adminAuth, bulkUpdateDescriptions);
 router.get('/:id', getMovieById);
 
 // Admin Authentication Verification
