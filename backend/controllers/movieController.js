@@ -1,5 +1,92 @@
 import Movie from '../models/Movie.js';
 import mongoose from 'mongoose';
+import axios from 'axios';
+
+const TMDB_BASE_URL = 'https://api.themoviedb.org/3';
+const IMAGE_BASE_URL = 'https://image.tmdb.org/t/p/w500';
+const BACKDROP_BASE_URL = 'https://image.tmdb.org/t/p/original';
+
+/**
+ * Parse a TMDB URL and return field data.
+ * Supports:
+ *   https://www.themoviedb.org/movie/12345
+ *   https://www.themoviedb.org/tv/12345
+ *   https://www.themoviedb.org/movie/12345-title-slug
+ *   https://www.themoviedb.org/tv/12345-title-slug
+ */
+export const fetchFromTmdbUrl = async (req, res) => {
+  const { url } = req.query;
+  const apiKey = process.env.TMDB_API_KEY;
+
+  if (!url) return res.status(400).json({ message: 'url query param required' });
+  if (!apiKey || apiKey === 'your_tmdb_api_key') {
+    return res.status(503).json({ message: 'TMDB API key not configured on server' });
+  }
+
+  try {
+    // Extract type and id from URL  e.g. /movie/550  or  /tv/1396-breaking-bad
+    const match = url.match(/themoviedb\.org\/(movie|tv)\/(\d+)/);
+    if (!match) {
+      return res.status(400).json({ message: 'Invalid TMDB URL. Expected format: https://www.themoviedb.org/movie/123 or /tv/123' });
+    }
+
+    const tmdbType = match[1]; // 'movie' or 'tv'
+    const tmdbId = match[2];
+
+    const detailEndpoint = `${TMDB_BASE_URL}/${tmdbType}/${tmdbId}`;
+    const [detailRes, creditRes, imagesRes] = await Promise.all([
+      axios.get(detailEndpoint, { params: { api_key: apiKey } }),
+      axios.get(`${detailEndpoint}/credits`, { params: { api_key: apiKey } }),
+      axios.get(`${detailEndpoint}/images`, { params: { api_key: apiKey, include_image_language: 'null,en' } }),
+    ]);
+
+    const details = detailRes.data;
+    const credits = creditRes.data;
+    const images = imagesRes.data;
+
+    const allBackdrops = images.backdrops || [];
+    const nullLangBackdrops = allBackdrops.filter(b => !b.iso_639_1);
+    const sortedBackdrops = (nullLangBackdrops.length > 0 ? nullLangBackdrops : allBackdrops)
+      .sort((a, b) => b.vote_average - a.vote_average);
+    const backdropPath = sortedBackdrops[0]?.file_path || details.backdrop_path || null;
+
+    const releaseDate = details.release_date || details.first_air_date;
+    const year = releaseDate ? new Date(releaseDate).getFullYear() : null;
+
+    const data = {
+      tmdbId: String(tmdbId),
+      title: details.title || details.name,
+      type: tmdbType === 'tv' ? 'series' : 'movie',
+      poster: details.poster_path ? `${IMAGE_BASE_URL}${details.poster_path}` : null,
+      backdrop: backdropPath ? `${BACKDROP_BASE_URL}${backdropPath}` : null,
+      rating: details.vote_average ? details.vote_average.toFixed(1) : null,
+      runtime: details.runtime
+        ? `${details.runtime} min`
+        : details.episode_run_time?.[0]
+        ? `${details.episode_run_time[0]} min`
+        : null,
+      status: details.status || null,
+      year,
+      language: details.spoken_languages?.[0]?.english_name || details.original_language || null,
+      genre: details.genres?.map(g => g.name) || [],
+      country: details.origin_country?.[0] || details.production_countries?.[0]?.name || null,
+      director: tmdbType === 'movie'
+        ? (credits.crew?.find(c => c.job === 'Director')?.name || null)
+        : (details.created_by?.[0]?.name || null),
+      cast: (credits.cast || []).slice(0, 10).map(c => ({
+        name: c.name,
+        character: c.character,
+        profile_path: c.profile_path ? `${IMAGE_BASE_URL}${c.profile_path}` : null,
+      })),
+      description: details.overview || null,
+    };
+
+    res.json(data);
+  } catch (error) {
+    console.error('[TMDB Fetch] Error:', error.message);
+    res.status(500).json({ message: 'Failed to fetch from TMDB: ' + error.message });
+  }
+};
 
 /**
  * Simple Admin Authentication Middleware

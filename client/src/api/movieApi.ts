@@ -49,4 +49,16 @@ export const movieApi = {
     });
     return response.data;
   },
+
+  /**
+   * Fetches movie/TV details from TMDB via the backend, which uses TMDB_API_KEY from .env.
+   * Accepts any TMDB URL: https://www.themoviedb.org/movie/123 or /tv/456-slug
+   */
+  fetchFromTmdb: async (tmdbUrl: string, password: string) => {
+    const response = await api.get('/movies/admin/tmdb-fetch', {
+      params: { url: tmdbUrl },
+      headers: { 'x-admin-password': password },
+    });
+    return response.data;
+  },
 };

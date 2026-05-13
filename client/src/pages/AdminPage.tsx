@@ -22,7 +22,7 @@ import {
   Select,
   SelectItem,
 } from "@heroui/react";
-import { Edit, Trash2, Lock, LayoutDashboard, ExternalLink, Plus, X } from "lucide-react";
+import { Edit, Trash2, Lock, LayoutDashboard, ExternalLink, Plus, X, Wand2 } from "lucide-react";
 
 export default function AdminPage() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
@@ -30,6 +30,8 @@ export default function AdminPage() {
   const [movies, setMovies] = useState<Movie[]>([]);
   const [loading, setLoading] = useState(false);
   const [selectedMovie, setSelectedMovie] = useState<Movie | null>(null);
+  const [tmdbUrl, setTmdbUrl] = useState("");
+  const [tmdbLoading, setTmdbLoading] = useState(false);
   const { isOpen, onOpen, onOpenChange } = useDisclosure();
   
   // Auth Check
@@ -88,7 +90,39 @@ export default function AdminPage() {
 
   const handleEdit = (movie: Movie) => {
     setSelectedMovie({ ...movie });
+    setTmdbUrl("");
     onOpen();
+  };
+
+  const handleTmdbAutofill = async () => {
+    if (!selectedMovie || !tmdbUrl.trim()) return;
+    setTmdbLoading(true);
+    try {
+      const data = await movieApi.fetchFromTmdb(tmdbUrl.trim(), password);
+      setSelectedMovie((prev) => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          ...(data.title      && { title:     data.title }),
+          ...(data.poster     && { poster:     data.poster }),
+          ...(data.backdrop   && { backdrop:   data.backdrop }),
+          ...(data.rating     && { rating:     data.rating }),
+          ...(data.runtime    && { runtime:    data.runtime }),
+          ...(data.country    && { country:    data.country }),
+          ...(data.director   && { director:   data.director }),
+          ...(data.year       && { year:       data.year }),
+          ...(data.language   && { language:   data.language }),
+          ...(data.description && { description: data.description }),
+          ...(data.genre?.length && { genre:  data.genre }),
+          ...(data.cast?.length  && { cast:   data.cast }),
+        };
+      });
+      setTmdbUrl("");
+    } catch (error: any) {
+      alert(error.response?.data?.message || "Failed to fetch from TMDB");
+    } finally {
+      setTmdbLoading(false);
+    }
   };
 
   const handleUpdate = async () => {
@@ -251,6 +285,30 @@ export default function AdminPage() {
                 </ModalHeader>
                 <ModalBody className="py-6 gap-6">
                   {selectedMovie && (
+                    <>
+                      {/* TMDB Autofill */}
+                      <div className="flex gap-2 items-center p-3 rounded-xl bg-white/5 border border-white/10">
+                        <div className="flex-1">
+                          <Input
+                            variant="underlined"
+                            placeholder="Paste TMDB URL to auto-fill all fields… e.g. https://www.themoviedb.org/movie/550"
+                            value={tmdbUrl}
+                            onValueChange={setTmdbUrl}
+                            classNames={{ input: "text-sm text-white/70 placeholder:text-white/20" }}
+                            startContent={<Wand2 className="w-4 h-4 text-brand shrink-0" />}
+                            onKeyDown={(e) => e.key === "Enter" && handleTmdbAutofill()}
+                          />
+                        </div>
+                        <Button
+                          size="sm"
+                          className="bg-brand text-white font-bold shrink-0 px-4"
+                          isLoading={tmdbLoading}
+                          onPress={handleTmdbAutofill}
+                        >
+                          Auto-fill
+                        </Button>
+                      </div>
+
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                       <div className="space-y-4">
                         <Input 
@@ -291,6 +349,124 @@ export default function AdminPage() {
                           value={selectedMovie.description} 
                           onValueChange={(v) => setSelectedMovie({...selectedMovie, description: v})} 
                         />
+                        <Input 
+                          label="Poster URL" 
+                          variant="bordered"
+                          placeholder="https://..."
+                          value={selectedMovie.poster || ""} 
+                          onValueChange={(v) => setSelectedMovie({...selectedMovie, poster: v})} 
+                        />
+                        <Input 
+                          label="Backdrop URL" 
+                          variant="bordered"
+                          placeholder="https://..."
+                          value={selectedMovie.backdrop || ""} 
+                          onValueChange={(v) => setSelectedMovie({...selectedMovie, backdrop: v})} 
+                        />
+                        <div className="grid grid-cols-2 gap-4">
+                          <Input 
+                            label="Rating" 
+                            variant="bordered"
+                            placeholder="e.g. 8.5"
+                            value={selectedMovie.rating || ""} 
+                            onValueChange={(v) => setSelectedMovie({...selectedMovie, rating: v})} 
+                          />
+                          <Input 
+                            label="Runtime" 
+                            variant="bordered"
+                            placeholder="e.g. 148 min"
+                            value={selectedMovie.runtime || ""} 
+                            onValueChange={(v) => setSelectedMovie({...selectedMovie, runtime: v})} 
+                          />
+                        </div>
+                        <div className="grid grid-cols-2 gap-4">
+                          <Input 
+                            label="Country" 
+                            variant="bordered"
+                            placeholder="e.g. USA"
+                            value={selectedMovie.country || ""} 
+                            onValueChange={(v) => setSelectedMovie({...selectedMovie, country: v})} 
+                          />
+                          <Input 
+                            label="Director" 
+                            variant="bordered"
+                            placeholder="e.g. Christopher Nolan"
+                            value={selectedMovie.director || ""} 
+                            onValueChange={(v) => setSelectedMovie({...selectedMovie, director: v})} 
+                          />
+                        </div>
+
+                        {/* Cast Section */}
+                        <div className="space-y-3">
+                          <div className="flex justify-between items-center">
+                            <h3 className="text-white font-bold text-sm uppercase tracking-widest">Cast</h3>
+                            <Button
+                              size="sm"
+                              color="primary"
+                              variant="flat"
+                              startContent={<Plus className="w-4 h-4" />}
+                              onPress={() => setSelectedMovie({
+                                ...selectedMovie,
+                                cast: [...(selectedMovie.cast || []), { name: "", character: "", profile_path: null }]
+                              })}
+                            >
+                              Add Cast
+                            </Button>
+                          </div>
+                          <div className="space-y-3 max-h-[280px] overflow-y-auto pr-2 custom-scrollbar">
+                            {(selectedMovie.cast || []).map((member, idx) => (
+                              <div key={idx} className="p-3 bg-white/5 rounded-xl border border-white/10 space-y-2 relative">
+                                <Button
+                                  isIconOnly
+                                  size="sm"
+                                  variant="light"
+                                  className="absolute top-2 right-2 text-white/20 hover:text-red-400"
+                                  onPress={() => {
+                                    const newCast = [...(selectedMovie.cast || [])];
+                                    newCast.splice(idx, 1);
+                                    setSelectedMovie({ ...selectedMovie, cast: newCast });
+                                  }}
+                                >
+                                  <X className="w-3 h-3" />
+                                </Button>
+                                <Input
+                                  label="Actor Name"
+                                  size="sm"
+                                  variant="underlined"
+                                  value={member.name}
+                                  onValueChange={(v) => {
+                                    const newCast = [...(selectedMovie.cast || [])];
+                                    newCast[idx] = { ...newCast[idx], name: v };
+                                    setSelectedMovie({ ...selectedMovie, cast: newCast });
+                                  }}
+                                />
+                                <Input
+                                  label="Character"
+                                  size="sm"
+                                  variant="underlined"
+                                  value={member.character}
+                                  onValueChange={(v) => {
+                                    const newCast = [...(selectedMovie.cast || [])];
+                                    newCast[idx] = { ...newCast[idx], character: v };
+                                    setSelectedMovie({ ...selectedMovie, cast: newCast });
+                                  }}
+                                />
+                                <Input
+                                  label="Profile Image URL"
+                                  size="sm"
+                                  variant="underlined"
+                                  placeholder="https://... (optional)"
+                                  value={member.profile_path || ""}
+                                  onValueChange={(v) => {
+                                    const newCast = [...(selectedMovie.cast || [])];
+                                    newCast[idx] = { ...newCast[idx], profile_path: v || null };
+                                    setSelectedMovie({ ...selectedMovie, cast: newCast });
+                                  }}
+                                />
+                              </div>
+                            ))}
+                          </div>
+                        </div>
                       </div>
 
                       <div className="space-y-4">
@@ -343,6 +519,7 @@ export default function AdminPage() {
                         </div>
                       </div>
                     </div>
+                    </>
                   )}
                 </ModalBody>
                 <ModalFooter>
