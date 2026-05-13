@@ -10,55 +10,43 @@ import {
   Select,
   SelectItem,
 } from "@heroui/react";
-import { Play, Download, Star, Search, Filter, SortAsc } from "lucide-react";
+import { Play, Download, Star, Search, Filter, SortAsc, ChevronLeft, ChevronRight } from "lucide-react";
 
 const GENRES = ["Action", "Adventure", "Animation", "Comedy", "Crime", "Drama", "Family", "Fantasy", "Horror", "Mystery", "Romance", "Sci-Fi", "Thriller"];
 
 export default function HomePage() {
   const [movies, setMovies] = useState<Movie[]>([]);
   const [loading, setLoading] = useState(true);
-  const [loadingMore, setLoadingMore] = useState(false);
-  const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [searchParams, setSearchParams] = useSearchParams();
+
+  const currentPage = Number(searchParams.get("page") || "1");
 
   // Local state for UI components (synced to searchParams)
   const [searchInput, setSearchInput] = useState(searchParams.get("search") || "");
 
-  const fetchMovies = useCallback(
-    async (isLoadMore = false) => {
-      if (isLoadMore) setLoadingMore(true);
-      else { setLoading(true); setPage(1); }
-
-      try {
-        const currentPage = isLoadMore ? page + 1 : 1;
-        const data = await movieApi.getMovies({
-          type: searchParams.get("type") || undefined,
-          genre: searchParams.get("genre") || undefined,
-          search: searchParams.get("search") || undefined,
-          sortBy: searchParams.get("sortBy") || "addedAt",
-          page: currentPage,
-        });
-
-        if (isLoadMore) {
-          setMovies((prev) => [...prev, ...data.movies]);
-          setPage(currentPage);
-        } else {
-          setMovies(data.movies);
-        }
-        setTotalPages(data.totalPages);
-      } catch (error) {
-        console.error(error);
-      } finally {
-        setLoading(false);
-        setLoadingMore(false);
-      }
-    },
-    [searchParams, page]
-  );
+  const fetchMovies = useCallback(async () => {
+    setLoading(true);
+    try {
+      const data = await movieApi.getMovies({
+        type: searchParams.get("type") || undefined,
+        genre: searchParams.get("genre") || undefined,
+        search: searchParams.get("search") || undefined,
+        sortBy: searchParams.get("sortBy") || "addedAt",
+        page: currentPage,
+      });
+      setMovies(data.movies);
+      setTotalPages(data.totalPages);
+    } catch (error) {
+      console.error(error);
+    } finally {
+      setLoading(false);
+    }
+  }, [searchParams]);
 
   useEffect(() => {
-    fetchMovies(false);
+    fetchMovies();
+    window.scrollTo({ top: 0, behavior: "smooth" });
   }, [searchParams]);
 
   // Debounced Search Effect
@@ -81,6 +69,27 @@ export default function HomePage() {
     else newParams.delete(key);
     newParams.set("page", "1");
     setSearchParams(newParams);
+  };
+
+  const goToPage = (p: number) => {
+    const newParams = new URLSearchParams(searchParams);
+    newParams.set("page", String(p));
+    setSearchParams(newParams);
+  };
+
+  // Build page number list with ellipsis
+  const getPageNumbers = () => {
+    const pages: (number | "...")[] = [];
+    if (totalPages <= 7) {
+      for (let i = 1; i <= totalPages; i++) pages.push(i);
+    } else if (currentPage <= 4) {
+      pages.push(1, 2, 3, 4, 5, "...", totalPages);
+    } else if (currentPage >= totalPages - 3) {
+      pages.push(1, "...", totalPages - 4, totalPages - 3, totalPages - 2, totalPages - 1, totalPages);
+    } else {
+      pages.push(1, "...", currentPage - 1, currentPage, currentPage + 1, "...", totalPages);
+    }
+    return pages;
   };
 
   const searchQuery = searchParams.get("search");
@@ -187,16 +196,51 @@ export default function HomePage() {
               ))}
             </div>
 
-            {page < totalPages && (
-              <div className="flex justify-center mt-16">
+            {totalPages > 1 && (
+              <div className="flex justify-center items-center gap-1.5 mt-16">
                 <Button
-                  onPress={() => fetchMovies(true)}
-                  isLoading={loadingMore}
-                  className="bg-white/5 border border-white/10 hover:bg-white/10 hover:border-brand/30 text-white px-14 h-13 font-bold uppercase tracking-widest rounded-full transition-all"
-                  variant="bordered"
-                  size="lg"
+                  isIconOnly
+                  variant="flat"
+                  size="sm"
+                  isDisabled={currentPage <= 1}
+                  onPress={() => goToPage(currentPage - 1)}
+                  className="bg-white/5 border border-white/10 text-white/60 hover:bg-white/10 disabled:opacity-30 w-9 h-9"
                 >
-                  {loadingMore ? <Spinner size="sm" color="white" /> : "Load More"}
+                  <ChevronLeft className="w-4 h-4" />
+                </Button>
+
+                {getPageNumbers().map((p, i) =>
+                  p === "..." ? (
+                    <span key={`ellipsis-${i}`} className="text-white/30 text-sm px-1 select-none">
+                      ···
+                    </span>
+                  ) : (
+                    <Button
+                      key={p}
+                      isIconOnly
+                      variant="flat"
+                      size="sm"
+                      onPress={() => goToPage(p as number)}
+                      className={`w-9 h-9 text-sm font-bold transition-all ${
+                        p === currentPage
+                          ? "bg-brand text-white border border-brand"
+                          : "bg-white/5 border border-white/10 text-white/50 hover:bg-white/10 hover:text-white"
+                      }`}
+                    >
+                      {p}
+                    </Button>
+                  )
+                )}
+
+                <Button
+                  isIconOnly
+                  variant="flat"
+                  size="sm"
+                  isDisabled={currentPage >= totalPages}
+                  onPress={() => goToPage(currentPage + 1)}
+                  className="bg-white/5 border border-white/10 text-white/60 hover:bg-white/10 disabled:opacity-30 w-9 h-9"
+                >
+                  <ChevronRight className="w-4 h-4" />
                 </Button>
               </div>
             )}

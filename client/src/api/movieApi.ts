@@ -15,6 +15,7 @@ export const movieApi = {
     search?: string;
     sortBy?: string;
     page?: number;
+    limit?: number;
   }) => {
     const response = await api.get<MovieResponse>('/movies', { params });
     return response.data;

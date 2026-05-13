@@ -22,7 +22,7 @@ import {
   Select,
   SelectItem,
 } from "@heroui/react";
-import { Edit, Trash2, Lock, LayoutDashboard, ExternalLink, Plus, X, Wand2 } from "lucide-react";
+import { Edit, Trash2, Lock, LayoutDashboard, ExternalLink, Plus, X, Wand2, Search } from "lucide-react";
 
 export default function AdminPage() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
@@ -32,6 +32,7 @@ export default function AdminPage() {
   const [selectedMovie, setSelectedMovie] = useState<Movie | null>(null);
   const [tmdbUrl, setTmdbUrl] = useState("");
   const [tmdbLoading, setTmdbLoading] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
   const { isOpen, onOpen, onOpenChange } = useDisclosure();
   
   // Auth Check
@@ -63,13 +64,10 @@ export default function AdminPage() {
     }
   };
 
-  const fetchMovies = async (pass?: string) => {
-    const currentPass = pass || password;
+  const fetchMovies = async (pass?: string, search?: string) => {
     setLoading(true);
     try {
-      // Use any protected route to verify pass while fetching if needed, 
-      // but getMovies is public. We just fetch items here.
-      const data = await movieApi.getMovies({ limit: 100 });
+      const data = await movieApi.getMovies({ limit: 100, search: search || undefined });
       setMovies(data.movies);
     } catch (error) {
       console.error(error);
@@ -77,6 +75,15 @@ export default function AdminPage() {
       setLoading(false);
     }
   };
+
+  // Debounced search — re-fetches from backend on every keystroke (after 400ms)
+  useEffect(() => {
+    if (!isLoggedIn) return;
+    const timer = setTimeout(() => {
+      fetchMovies(password, searchQuery);
+    }, 400);
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
 
   const handleDelete = async (id: string) => {
     if (!window.confirm("Are you sure you want to delete this movie?")) return;
@@ -214,56 +221,85 @@ export default function AdminPage() {
           </Button>
         </div>
 
-        <Table 
-          aria-label="Movie management table"
-          classNames={{
-            base: "bg-white/5 border border-white/10 rounded-2xl overflow-hidden",
-            header: "bg-white/10",
-            th: "bg-transparent text-white/40 text-[11px] uppercase tracking-widest h-14 border-b border-white/10",
-            td: "text-white/80 py-4",
-          }}
-        >
-          <TableHeader>
-            <TableColumn>MOVIE / SERIES</TableColumn>
-            <TableColumn>YEAR</TableColumn>
-            <TableColumn>TYPE</TableColumn>
-            <TableColumn>LINKS</TableColumn>
-            <TableColumn>ADDED ON</TableColumn>
-            <TableColumn align="center">ACTIONS</TableColumn>
-          </TableHeader>
-          <TableBody loadingContent={<div>loading...</div>} isLoading={loading}>
-            {movies.map((movie) => (
-              <TableRow key={movie._id} className="border-b border-white/5 last:border-0 hover:bg-white/[0.02] transition-colors">
-                <TableCell>
-                  <div className="flex items-center gap-3">
-                    <img src={movie.poster} className="w-10 h-14 object-cover rounded-md border border-white/10" alt="" />
-                    <span className="font-bold text-sm">{movie.title}</span>
-                  </div>
-                </TableCell>
-                <TableCell>{movie.year}</TableCell>
-                <TableCell>
-                  <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded bg-white/10">
-                    {movie.type}
-                  </span>
-                </TableCell>
-                <TableCell>{movie.links?.length || 0} Links</TableCell>
-                <TableCell className="text-white/30 text-xs">
-                  {new Date(movie.addedAt).toLocaleDateString()}
-                </TableCell>
-                <TableCell>
-                  <div className="flex gap-2 justify-center">
-                    <Button isIconOnly variant="flat" size="sm" onPress={() => handleEdit(movie)} className="bg-white/5 hover:bg-blue-500/20 text-blue-400">
-                      <Edit className="w-4 h-4" />
-                    </Button>
-                    <Button isIconOnly variant="flat" size="sm" onPress={() => handleDelete(movie._id)} className="bg-white/5 hover:bg-red-500/20 text-red-400">
-                      <Trash2 className="w-4 h-4" />
-                    </Button>
-                  </div>
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
+        {/* Search Bar */}
+        <div className="mb-6">
+          <Input
+            placeholder="Search by title..."
+            value={searchQuery}
+            onValueChange={setSearchQuery}
+            startContent={<Search className="w-4 h-4 text-white/30 shrink-0" />}
+            isClearable
+            onClear={() => setSearchQuery("")}
+            classNames={{
+              inputWrapper: "bg-white/5 border border-white/10 hover:border-white/20 focus-within:!border-brand/50 h-11",
+              input: "text-sm text-white placeholder:text-white/20",
+            }}
+          />
+        </div>
+
+        {(() => {
+          const filtered = movies;
+          return (
+            <>
+              <Table
+                aria-label="Movie management table"
+                classNames={{
+                  base: "bg-white/5 border border-white/10 rounded-2xl overflow-hidden",
+                  header: "bg-white/10",
+                  th: "bg-transparent text-white/40 text-[11px] uppercase tracking-widest h-14 border-b border-white/10",
+                  td: "text-white/80 py-4",
+                }}
+              >
+                <TableHeader>
+                  <TableColumn>MOVIE / SERIES</TableColumn>
+                  <TableColumn>YEAR</TableColumn>
+                  <TableColumn>TYPE</TableColumn>
+                  <TableColumn>LINKS</TableColumn>
+                  <TableColumn>ADDED ON</TableColumn>
+                  <TableColumn align="center">ACTIONS</TableColumn>
+                </TableHeader>
+                <TableBody loadingContent={<div>loading...</div>} isLoading={loading}>
+                  {filtered.map((movie) => (
+                    <TableRow key={movie._id} className="border-b border-white/5 last:border-0 hover:bg-white/[0.02] transition-colors">
+                      <TableCell>
+                        <div className="flex items-center gap-3">
+                          <img src={movie.poster} className="w-10 h-14 object-cover rounded-md border border-white/10" alt="" />
+                          <span className="font-bold text-sm">{movie.title}</span>
+                        </div>
+                      </TableCell>
+                      <TableCell>{movie.year}</TableCell>
+                      <TableCell>
+                        <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded bg-white/10">
+                          {movie.type}
+                        </span>
+                      </TableCell>
+                      <TableCell>{movie.links?.length || 0} Links</TableCell>
+                      <TableCell className="text-white/30 text-xs">
+                        {new Date(movie.addedAt).toLocaleDateString()}
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex gap-2 justify-center">
+                          <Button isIconOnly variant="flat" size="sm" onPress={() => handleEdit(movie)} className="bg-white/5 hover:bg-blue-500/20 text-blue-400">
+                            <Edit className="w-4 h-4" />
+                          </Button>
+                          <Button isIconOnly variant="flat" size="sm" onPress={() => handleDelete(movie._id)} className="bg-white/5 hover:bg-red-500/20 text-red-400">
+                            <Trash2 className="w-4 h-4" />
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+
+              {!loading && searchQuery.trim() && filtered.length === 0 && (
+                <div className="flex flex-col items-center justify-center py-16 text-center">
+                  <p className="text-white/30 text-sm">No results for <span className="text-white/60 font-bold">&ldquo;{searchQuery}&rdquo;</span></p>
+                </div>
+              )}
+            </>
+          );
+        })()}
 
         {/* Edit Modal */}
         <Modal 
