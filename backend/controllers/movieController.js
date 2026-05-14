@@ -1,6 +1,8 @@
 import Movie from '../models/Movie.js';
 import mongoose from 'mongoose';
 import axios from 'axios';
+import { parseManualMessage } from '../services/manualParser.js';
+import { fetchFullDetailsFromTMDB } from '../services/tmdbService.js';
 
 const TMDB_BASE_URL = 'https://api.themoviedb.org/3';
 const IMAGE_BASE_URL = 'https://image.tmdb.org/t/p/w500';
@@ -275,4 +277,125 @@ export const bulkUpdateDescriptions = async (req, res) => {
 
   res.write(JSON.stringify({ type: 'done', updated, failed, total: movies.length }) + '\n');
   res.end();
+};
+
+// ─── Manual Parser ─────────────────────────────────────────────────────────────
+
+/**
+ * POST /api/movies/admin/parse-manual
+ * Body: { text: string }
+ *
+ * 1. Runs the regex-based manual parser.
+ * 2. Optionally enriches with TMDB (same logic as webhookController).
+ * 3. Returns the preview data — does NOT save to DB.
+ */
+export const parseManual = async (req, res) => {
+  const { text } = req.body;
+  if (!text || !text.trim()) {
+    return res.status(400).json({ message: 'text body field is required' });
+  }
+
+  try {
+    // Step 1: Regex parse
+    const parsed = parseManualMessage(text);
+    console.log(`[ManualParser] Title: "${parsed.title}" | Links: ${parsed.links?.length}`);
+
+    // Step 2: TMDB enrichment (best-effort, no failure if TMDB is unavailable)
+    let tmdbDetails = null;
+    try {
+      tmdbDetails = await fetchFullDetailsFromTMDB(parsed.title, parsed.type, parsed.year);
+      if (tmdbDetails) {
+        console.log(`[ManualParser] TMDB found: ${tmdbDetails.title} (${tmdbDetails.tmdbId})`);
+      }
+    } catch (tmdbErr) {
+      console.warn('[ManualParser] TMDB lookup failed (non-fatal):', tmdbErr.message);
+    }
+
+    // Step 3: Merge strategy
+    // User provides: title, year, language, audio, links (filenames → URLs)
+    // TMDB provides: everything else — genre, director, cast, poster, backdrop,
+    //                rating, runtime, status, country, description, originalTitle, tmdbId
+    // If TMDB is unavailable the parsed fields are used as-is (graceful degradation).
+
+    const merged = {
+      // Start with TMDB as the base (null-safe spread)
+      ...(tmdbDetails || {}),
+
+      // User-provided fields always win — they came directly from you
+      title:    tmdbDetails?.title    || parsed.title,   // prefer TMDB clean title
+      year:     tmdbDetails?.year     || parsed.year,
+      language: parsed.language       || tmdbDetails?.language || '',
+      audio:    parsed.audio?.length  ? parsed.audio : [],
+      type:     parsed.type,          // inferred from filenames (series vs movie)
+
+      // Links are purely from the paste — TMDB doesn't provide these
+      links: parsed.links,
+      link:  parsed.links[0]?.url || '',
+    };
+
+    res.json({ success: true, data: merged });
+  } catch (err) {
+    console.error('[ManualParser] Error:', err.message);
+    res.status(500).json({ message: 'Parse error: ' + err.message });
+  }
+};
+
+/**
+ * POST /api/movies/admin/save-manual
+ * Body: { movieData: object }
+ *
+ * Saves a manually-parsed (and optionally edited) movie to DB.
+ * Handles duplicate TMDB IDs (merges links) and creates new entries.
+ * Uses a synthetic telegramMsgId based on current timestamp to satisfy the unique index.
+ */
+export const saveManual = async (req, res) => {
+  const { movieData } = req.body;
+  if (!movieData || !movieData.title) {
+    return res.status(400).json({ message: 'movieData with at least a title is required' });
+  }
+
+  try {
+    // Try to find an existing movie by tmdbId or title+year
+    let existingMovie = null;
+    if (movieData.tmdbId) {
+      existingMovie = await Movie.findOne({ tmdbId: movieData.tmdbId });
+    }
+    if (!existingMovie && movieData.title) {
+      const query = { title: movieData.title };
+      if (movieData.year) query.year = movieData.year;
+      existingMovie = await Movie.findOne(query);
+    }
+
+    if (existingMovie) {
+      // Merge: add unique new links only
+      const currentLinks = existingMovie.links || [];
+      const incomingLinks = movieData.links || [];
+      const uniqueNewLinks = incomingLinks.filter(nLink =>
+        !currentLinks.some(cLink => cLink.url === nLink.url)
+      );
+
+      const { links: _, ...restData } = movieData;
+      existingMovie.set(restData);
+      uniqueNewLinks.forEach(link => existingMovie.links.push(link));
+
+      await existingMovie.save();
+      console.log(`[ManualParser] UPDATED: ${existingMovie.title} (+${uniqueNewLinks.length} links)`);
+      return res.status(200).json({ success: true, action: 'updated', movie: existingMovie });
+    }
+
+    // New entry — generate a synthetic negative telegramMsgId so it doesn't clash with real TG IDs
+    const syntheticMsgId = -(Date.now());
+    const newMovie = new Movie({
+      ...movieData,
+      telegramMsgId: syntheticMsgId,
+      rawMessage: movieData.rawMessage || '',
+      addedAt: new Date(),
+    });
+    await newMovie.save();
+    console.log(`[ManualParser] CREATED: ${newMovie.title}`);
+    return res.status(201).json({ success: true, action: 'created', movie: newMovie });
+  } catch (err) {
+    console.error('[ManualParser] Save error:', err.message);
+    res.status(500).json({ message: 'Save error: ' + err.message });
+  }
 };

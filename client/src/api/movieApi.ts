@@ -89,4 +89,26 @@ export const movieApi = {
       }
     }
   },
+
+  /**
+   * Parses a raw Telegram message text using the server-side regex parser.
+   * Returns preview data enriched with TMDB. Does NOT save to DB.
+   */
+  parseManual: async (text: string, password: string) => {
+    const response = await api.post('/movies/admin/parse-manual', { text }, {
+      headers: { 'x-admin-password': password },
+    });
+    return response.data as { success: boolean; data: any };
+  },
+
+  /**
+   * Saves manually-parsed (and optionally edited) movie data to the database.
+   * Merges with existing entries if same tmdbId or title+year is found.
+   */
+  saveManual: async (movieData: any, password: string) => {
+    const response = await api.post('/movies/admin/save-manual', { movieData }, {
+      headers: { 'x-admin-password': password },
+    });
+    return response.data as { success: boolean; action: string; movie: any };
+  },
 };
