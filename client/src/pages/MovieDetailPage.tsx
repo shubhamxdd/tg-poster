@@ -251,15 +251,15 @@ export default function MovieDetailPage() {
       </span>
       </>
     )}
-    {(movie.audio?.length ? movie.audio : movie.language ? [movie.language] : []).length > 0 && (
+    {movie.audio?.length ? (
       <>
       <span className="w-1 h-1 rounded-full bg-white/20" />
       <span className="flex items-center gap-1.5">
       <Languages className="w-3.5 h-3.5 text-brand" />
-      {movie.audio?.length ? movie.audio.join(" · ") : movie.language}
+      {movie.audio.join(" · ")}
       </span>
       </>
-    )}
+    ) : null}
     </div>
 
     {movie.description && (
@@ -336,7 +336,7 @@ export default function MovieDetailPage() {
         <Tab key={name} title={name}>
         <div className="space-y-3">
         {seasonGroups[name].map((link, idx) => (
-          <DownloadRow key={idx} link={link} onDownload={handleDownload} movieAudio={movie.audio} movieLanguage={movie.language} />
+          <DownloadRow key={idx} link={link} onDownload={handleDownload} movieAudio={movie.audio} />
         ))}
         </div>
         </Tab>
@@ -345,7 +345,7 @@ export default function MovieDetailPage() {
     ) : seasonNames.length === 1 ? (
       <div className="space-y-3">
       {seasonGroups[seasonNames[0]].map((link, idx) => (
-        <DownloadRow key={idx} link={link} onDownload={handleDownload} movieAudio={movie.audio} movieLanguage={movie.language} />
+        <DownloadRow key={idx} link={link} onDownload={handleDownload} movieAudio={movie.audio} />
       ))}
       </div>
     ) : (
@@ -403,11 +403,11 @@ export default function MovieDetailPage() {
     {movie.country && <InfoRow label="Country" value={movie.country} />}
     {movie.status && <InfoRow label="Status" value={movie.status} valueClass="text-emerald-400" />}
     </div>
-    {(movie.audio?.length || movie.language) && (
+    {movie.audio?.length ? (
       <div className="space-y-2">
-      <p className="text-[10px] uppercase tracking-[0.2em] text-white/30 font-medium">Audio / Language</p>
+      <p className="text-[10px] uppercase tracking-[0.2em] text-white/30 font-medium">Audio</p>
       <div className="flex flex-wrap gap-2">
-      {(movie.audio?.length ? movie.audio : movie.language ? [movie.language] : []).map((lang) => (
+      {movie.audio.map((lang) => (
         <span key={lang} className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest px-2.5 py-1 rounded-lg bg-brand/10 text-brand border border-brand/20">
         <Languages className="w-3 h-3" />
         {lang}
@@ -415,7 +415,7 @@ export default function MovieDetailPage() {
       ))}
       </div>
       </div>
-    )}
+    ) : null}
     <Divider className="bg-white/5" />
     <div>
     <p className="text-[10px] uppercase tracking-[0.2em] text-white/30 mb-3 font-medium">Genres</p>
@@ -445,12 +445,10 @@ function DownloadRow({
   link,
   onDownload,
   movieAudio,
-  movieLanguage,
 }: {
   link: MovieLink;
   onDownload: (url: string) => void;
   movieAudio?: string[];
-  movieLanguage?: string;
 }) {
   const getTechTags = (filename: string) => {
     if (!filename) return [];
@@ -504,16 +502,7 @@ function DownloadRow({
   // Double lock: If it's a package label, NEVER render an episode badge
   const showEpisodeBadge = realEpisode && !isPackageLabel;
 
-  const displayLangs: string[] = [];
-  if (link.language) {
-    const langs = link.language.split(',').map((l) => l.trim()).filter(Boolean);
-    displayLangs.push(...langs);
-  } else {
-    const fallback = new Set<string>();
-    (movieAudio || []).forEach((l) => fallback.add(l));
-    if (movieLanguage) fallback.add(movieLanguage);
-    displayLangs.push(...Array.from(fallback));
-  }
+  const displayLangs: string[] = movieAudio?.length ? [...movieAudio] : [];
 
   return (
     <Card className="bg-[#111215] border border-white/8 hover:border-brand/25 hover:bg-[#16181C] transition-all rounded-2xl group">

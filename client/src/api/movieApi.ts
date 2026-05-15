@@ -11,7 +11,6 @@ export const movieApi = {
   getMovies: async (params: {
     type?: string;
     genre?: string;
-    language?: string;
     search?: string;
     sortBy?: string;
     page?: number;
@@ -88,6 +87,29 @@ export const movieApi = {
         if (line.trim()) onProgress(JSON.parse(line));
       }
     }
+  },
+
+  /**
+   * Searches TMDB for candidates matching title+type+year.
+   * Returns up to 8 lightweight results for the admin picker.
+   */
+  searchTmdbCandidates: async (title: string, type: string, year: number | null, password: string) => {
+    const response = await api.get('/movies/admin/tmdb-search', {
+      params: { title, type, year: year || undefined },
+      headers: { 'x-admin-password': password },
+    });
+    return response.data as { candidates: any[] };
+  },
+
+  /**
+   * Fetches full TMDB details for a specific tmdbId chosen by the admin.
+   */
+  fetchTmdbById: async (tmdbId: string, tmdbType: string, password: string) => {
+    const response = await api.get('/movies/admin/tmdb-by-id', {
+      params: { tmdbId, tmdbType },
+      headers: { 'x-admin-password': password },
+    });
+    return response.data;
   },
 
   /**

@@ -1,10 +1,12 @@
 import express from 'express';
-import { getMovies, getMovieById, deleteMovie, updateMovie, adminAuth, verifyAdmin, fetchFromTmdbUrl, bulkUpdateDescriptions, parseManual, saveManual } from '../controllers/movieController.js';
+import { getMovies, getMovieById, deleteMovie, updateMovie, adminAuth, verifyAdmin, fetchFromTmdbUrl, bulkUpdateDescriptions, parseManual, saveManual, searchTmdbCandidates, fetchTmdbById } from '../controllers/movieController.js';
 
 const router = express.Router();
 
 router.get('/', getMovies);
 router.get('/admin/tmdb-fetch', adminAuth, fetchFromTmdbUrl);
+router.get('/admin/tmdb-search', adminAuth, searchTmdbCandidates);
+router.get('/admin/tmdb-by-id', adminAuth, fetchTmdbById);
 router.post('/admin/bulk-update-descriptions', adminAuth, bulkUpdateDescriptions);
 router.post('/admin/parse-manual', adminAuth, parseManual);
 router.post('/admin/save-manual', adminAuth, saveManual);

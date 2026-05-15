@@ -2,7 +2,7 @@ import Movie from '../models/Movie.js';
 import mongoose from 'mongoose';
 import axios from 'axios';
 import { parseManualMessage } from '../services/manualParser.js';
-import { fetchFullDetailsFromTMDB } from '../services/tmdbService.js';
+import { fetchFullDetailsFromTMDB, searchTMDBCandidates, fetchFullDetailsByTMDBId } from '../services/tmdbService.js';
 
 const TMDB_BASE_URL = 'https://api.themoviedb.org/3';
 const IMAGE_BASE_URL = 'https://image.tmdb.org/t/p/w500';
@@ -112,12 +112,11 @@ export const adminAuth = (req, res, next) => {
 
 export const getMovies = async (req, res) => {
   try {
-    const { type, genre, language, search, sortBy, page = 1, limit = 24 } = req.query;
+    const { type, genre, search, sortBy, page = 1, limit = 24 } = req.query;
     
     const query = {};
     if (type) query.type = type;
     if (genre) query.genre = genre;
-    if (language) query.language = language;
     if (search) query.title = { $regex: search, $options: 'i' };
 
     let sortQuery = { addedAt: -1 }; // Default
@@ -279,6 +278,33 @@ export const bulkUpdateDescriptions = async (req, res) => {
   res.end();
 };
 
+// ─── TMDB Search Helpers ───────────────────────────────────────────────────────
+
+/**
+ * GET /api/movies/admin/tmdb-search?title=&type=&year=
+ * Returns up to 8 TMDB candidate results for the admin to pick from.
+ */
+export const searchTmdbCandidates = async (req, res) => {
+  const { title, type = 'movie', year } = req.query;
+  if (!title) return res.status(400).json({ message: 'title is required' });
+
+  const candidates = await searchTMDBCandidates(title, type, year ? parseInt(year, 10) : undefined);
+  res.json({ candidates });
+};
+
+/**
+ * GET /api/movies/admin/tmdb-by-id?tmdbId=&tmdbType=
+ * Fetches full TMDB details for a specific tmdbId selected by the admin.
+ */
+export const fetchTmdbById = async (req, res) => {
+  const { tmdbId, tmdbType = 'movie' } = req.query;
+  if (!tmdbId) return res.status(400).json({ message: 'tmdbId is required' });
+
+  const details = await fetchFullDetailsByTMDBId(tmdbId, tmdbType);
+  if (!details) return res.status(404).json({ message: 'TMDB entry not found' });
+  res.json(details);
+};
+
 // ─── Manual Parser ─────────────────────────────────────────────────────────────
 
 /**
@@ -300,40 +326,75 @@ export const parseManual = async (req, res) => {
     const parsed = parseManualMessage(text);
     console.log(`[ManualParser] Title: "${parsed.title}" | Links: ${parsed.links?.length}`);
 
-    // Step 2: TMDB enrichment (best-effort, no failure if TMDB is unavailable)
-    let tmdbDetails = null;
+    // Step 2: Search DB for existing matches (improved: score by title similarity + year)
+    const normalize = (s) => (s || '').toLowerCase().replace(/[^a-z0-9]/g, ' ').replace(/\s+/g, ' ').trim();
+    const parsedNorm = normalize(parsed.title);
+    const parsedYear = parsed.year;
+
+    // Pull all movies (titles + years only — lean for speed)
+    const allMovies = await Movie.find({}, { _id: 1, title: 1, originalTitle: 1, year: 1, type: 1, links: 1, poster: 1, tmdbId: 1 }).lean();
+
+    const dbMatches = allMovies.filter(m => {
+      const dbNorm  = normalize(m.title);
+      const dbOrig  = normalize(m.originalTitle);
+      const titleHit = dbNorm === parsedNorm || dbOrig === parsedNorm
+        || (dbNorm.length > 3 && parsedNorm.includes(dbNorm))
+        || (parsedNorm.length > 3 && dbNorm.includes(parsedNorm));
+
+      if (!titleHit) return false;
+
+      // If both have a year, they must be within 1 year of each other to avoid false positives
+      if (parsedYear && m.year && Math.abs(m.year - parsedYear) > 1) return false;
+      return true;
+    });
+
+    // Step 3: TMDB enrichment — fetch top result AND all candidates
+    let tmdbDetails   = null;
+    let tmdbCandidates = [];
     try {
-      tmdbDetails = await fetchFullDetailsFromTMDB(parsed.title, parsed.type, parsed.year);
+      // Get candidates list first (cheap)
+      tmdbCandidates = await searchTMDBCandidates(parsed.title, parsed.type, parsed.year);
+
+      if (tmdbCandidates.length === 1) {
+        // Only one result — auto-select it
+        tmdbDetails = await fetchFullDetailsByTMDBId(tmdbCandidates[0].tmdbId, tmdbCandidates[0].tmdbType);
+      } else if (tmdbCandidates.length > 1) {
+        // Multiple candidates — pick the best one automatically based on year match,
+        // but still return the full candidate list so admin can override
+        const yearMatch = parsed.year
+          ? tmdbCandidates.find(c => c.year === parsed.year)
+          : null;
+        const autoPickId = (yearMatch || tmdbCandidates[0]);
+        tmdbDetails = await fetchFullDetailsByTMDBId(autoPickId.tmdbId, autoPickId.tmdbType);
+      }
+
       if (tmdbDetails) {
-        console.log(`[ManualParser] TMDB found: ${tmdbDetails.title} (${tmdbDetails.tmdbId})`);
+        console.log(`[ManualParser] TMDB found: ${tmdbDetails.title} (${tmdbDetails.tmdbId}) | ${tmdbCandidates.length} candidates`);
       }
     } catch (tmdbErr) {
       console.warn('[ManualParser] TMDB lookup failed (non-fatal):', tmdbErr.message);
     }
 
-    // Step 3: Merge strategy
-    // User provides: title, year, language, audio, links (filenames → URLs)
-    // TMDB provides: everything else — genre, director, cast, poster, backdrop,
-    //                rating, runtime, status, country, description, originalTitle, tmdbId
-    // If TMDB is unavailable the parsed fields are used as-is (graceful degradation).
-
+    // Step 4: Merge
     const merged = {
-      // Start with TMDB as the base (null-safe spread)
       ...(tmdbDetails || {}),
-
-      // User-provided fields always win — they came directly from you
-      title:    tmdbDetails?.title    || parsed.title,   // prefer TMDB clean title
+      title:    tmdbDetails?.title    || parsed.title,
       year:     tmdbDetails?.year     || parsed.year,
-      language: parsed.language       || tmdbDetails?.language || '',
+      // language field removed — audio array is the single source of truth
       audio:    parsed.audio?.length  ? parsed.audio : [],
-      type:     parsed.type,          // inferred from filenames (series vs movie)
-
-      // Links are purely from the paste — TMDB doesn't provide these
+      type:     parsed.type,
       links: parsed.links,
       link:  parsed.links[0]?.url || '',
     };
 
-    res.json({ success: true, data: merged });
+    res.json({
+      success: true,
+      data: merged,
+      // Always return candidates so the UI can offer a picker
+      tmdbCandidates: tmdbCandidates.length > 1 ? tmdbCandidates : [],
+      // DB matches for the duplicate-check UI
+      dbMatches,
+    });
   } catch (err) {
     console.error('[ManualParser] Error:', err.message);
     res.status(500).json({ message: 'Parse error: ' + err.message });

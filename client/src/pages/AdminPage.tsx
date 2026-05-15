@@ -56,6 +56,9 @@ export default function AdminPage() {
   const [existingMatches, setExistingMatches] = useState<Movie[]>([]);
   const [selectedMergeId, setSelectedMergeId] = useState<string | "NEW" | null>(null);
   const [parserConfidence, setParserConfidence] = useState<"High" | "Medium" | "Low">("High");
+  const [tmdbCandidates, setTmdbCandidates] = useState<any[]>([]);
+  const [tmdbPickerOpen, setTmdbPickerOpen] = useState(false);
+  const [tmdbPickerLoading, setTmdbPickerLoading] = useState(false);
 
   useEffect(() => {
     const checkAuth = async () => {
@@ -139,7 +142,7 @@ export default function AdminPage() {
                        ...(data.country    && { country:    data.country }),
                        ...(data.director   && { director:   data.director }),
                        ...(data.year       && { year:       data.year }),
-                       ...(data.language   && { language:   data.language }),
+                       ...(data.audio      && { audio:      data.audio }),
                        ...(data.audio?.length && { audio: data.audio }),
                        ...(data.description && { description: data.description }),
                        ...(data.genre?.length && { genre:  data.genre }),
@@ -268,6 +271,8 @@ export default function AdminPage() {
     setManualSaved(false);
     setExistingMatches([]);
     setSelectedMergeId(null);
+    setTmdbCandidates([]);
+    setTmdbPickerOpen(false);
 
     try {
       const result = await movieApi.parseManual(manualText, password);
@@ -279,36 +284,43 @@ export default function AdminPage() {
       setParserConfidence(conf);
       if (conf !== "High") setManualEditMode(true);
 
-      // PURE TITLE MATCHING: Strip years (e.g. 2024), convert all symbols/punctuation to spaces, and trim
-      if (parsedData.title) {
-        const cleanTitle = (t: string) => t.toLowerCase().replace(/\(\d{4}\)/g, '').replace(/[^a-z0-9]/g, ' ').replace(/\s+/g, ' ').trim();
-        const parsedClean = cleanTitle(parsedData.title);
+      // Use server-returned DB matches (already filtered by title + year)
+      const dbMatches: Movie[] = (result as any).dbMatches || [];
+      setExistingMatches(dbMatches);
+      setSelectedMergeId(dbMatches.length > 0 ? null : "NEW");
 
-        const matches = movies.filter(m => {
-          const dbClean = cleanTitle(m.title);
-          const dbOrig = m.originalTitle ? cleanTitle(m.originalTitle) : "";
-
-          return dbClean === parsedClean ||
-          dbOrig === parsedClean ||
-          (dbClean.length > 3 && parsedClean.includes(dbClean)) ||
-          (parsedClean.length > 3 && dbClean.includes(parsedClean));
-        });
-
-        setExistingMatches(matches);
-        if (matches.length > 0) {
-          setSelectedMergeId(null);
-        } else {
-          setSelectedMergeId("NEW");
-        }
-      } else {
-        setSelectedMergeId("NEW");
-      }
+      // TMDB candidates — show picker if more than 1
+      const candidates = (result as any).tmdbCandidates || [];
+      setTmdbCandidates(candidates);
+      if (candidates.length > 1) setTmdbPickerOpen(true);
 
       setManualPreview(parsedData);
     } catch (error: any) {
       alert(error.response?.data?.message || "Parse failed");
     } finally {
       setManualParsing(false);
+    }
+  };
+
+  /** Called when admin picks a TMDB candidate from the picker */
+  const handleTmdbCandidatePick = async (candidate: any) => {
+    setTmdbPickerLoading(true);
+    try {
+      const details = await movieApi.fetchTmdbById(candidate.tmdbId, candidate.tmdbType, password);
+      // Merge TMDB details into preview, preserving user-supplied links/audio/type
+      setManualPreview((prev: any) => ({
+        ...prev,
+        ...details,
+        audio: prev.audio?.length ? prev.audio : [],
+        type: prev.type,
+        links: prev.links,
+        link: prev.links?.[0]?.url || '',
+      }));
+      setTmdbPickerOpen(false);
+    } catch (e: any) {
+      alert("Failed to fetch TMDB details: " + (e.response?.data?.message || e.message));
+    } finally {
+      setTmdbPickerLoading(false);
     }
   };
 
@@ -377,7 +389,7 @@ export default function AdminPage() {
     if (!manualPreview) return;
     setManualPreview({
       ...manualPreview,
-      links: [...(manualPreview.links || []), { label: "Season 1", url: "", quality: "", size: "", language: "", season: null, episode: null, filename: "" }],
+      links: [...(manualPreview.links || []), { label: "Season 1", url: "", quality: "", size: "", season: null, episode: null, filename: "" }],
     });
   };
 
@@ -576,27 +588,71 @@ export default function AdminPage() {
           </div>
         )}
 
+        {/* ── TMDB Candidate Picker ───────────────────────────────────────── */}
+        {tmdbPickerOpen && tmdbCandidates.length > 1 && (
+          <div className="p-4 rounded-xl bg-purple-500/10 border border-purple-500/30 space-y-3">
+          <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2 text-purple-400">
+          <Search className="w-4 h-4" />
+          <h3 className="font-bold text-sm">Multiple TMDB Results — Pick the Correct One</h3>
+          </div>
+          <Button size="sm" variant="flat" className="text-white/40 text-xs border border-white/10" onPress={() => setTmdbPickerOpen(false)}>Keep Auto-selected</Button>
+          </div>
+          <p className="text-xs text-white/50">TMDB returned {tmdbCandidates.length} results for this title. The system auto-picked one, but you can override it here.</p>
+          <div className="grid gap-2 max-h-72 overflow-y-auto pr-1">
+          {tmdbCandidates.map((c) => (
+            <button
+              key={c.tmdbId}
+              disabled={tmdbPickerLoading}
+              onClick={() => handleTmdbCandidatePick(c)}
+              className={`flex items-center gap-3 p-3 rounded-lg border text-left transition-all cursor-pointer
+                ${manualPreview?.tmdbId === c.tmdbId
+                  ? "bg-purple-500/20 border-purple-500/60 ring-1 ring-purple-400"
+                  : "bg-white/5 border-white/10 hover:bg-white/10 hover:border-white/20"}`}
+            >
+            {c.poster
+              ? <img src={c.poster} className="w-8 h-12 object-cover rounded shrink-0" />
+              : <div className="w-8 h-12 bg-white/10 rounded shrink-0 flex items-center justify-center text-white/20 text-xs">?</div>
+            }
+            <div className="flex-1 min-w-0">
+            <p className="font-bold text-sm text-white truncate">{c.title} {c.year && <span className="text-white/40 font-normal">({c.year})</span>}</p>
+            {c.originalTitle && c.originalTitle !== c.title && <p className="text-xs text-white/40 truncate">{c.originalTitle}</p>}
+            {c.overview && <p className="text-xs text-white/30 mt-1 line-clamp-2">{c.overview}</p>}
+            </div>
+            <div className="shrink-0 text-right">
+            {c.rating && <p className="text-xs text-yellow-400 font-bold">★ {c.rating}</p>}
+            <p className="text-[10px] text-white/30 font-mono">#{c.tmdbId}</p>
+            {manualPreview?.tmdbId === c.tmdbId && <span className="text-[10px] text-purple-400 font-bold">AUTO</span>}
+            </div>
+            </button>
+          ))}
+          </div>
+          </div>
+        )}
+
+        {/* ── DB Duplicate Detection ──────────────────────────────────────── */}
         {existingMatches.length > 0 && selectedMergeId === null && (
           <div className="p-4 rounded-xl bg-brand/10 border border-brand/30 space-y-4">
           <div className="flex items-center gap-2 text-brand">
-          <GitMerge className="w-5 h-5" /><h3 className="font-bold">Existing Title Detected</h3>
+          <GitMerge className="w-5 h-5" /><h3 className="font-bold">Already in Database — What to Do?</h3>
           </div>
-          <p className="text-sm text-white/70">We found existing matches in the database. Do you want to merge these new links into an existing entry, or create a brand new one?</p>
+          <p className="text-sm text-white/70">We found {existingMatches.length} existing {existingMatches.length === 1 ? "entry" : "entries"} matching this title and year. Merge new links into one, or add as a separate entry.</p>
           <div className="grid gap-3">
           {existingMatches.map((match) => (
-            <div key={match._id} className="flex items-center justify-between p-3 bg-white/5 rounded-lg border border-white/10">
-            <div className="flex items-center gap-3">
-            {match.poster && <img src={match.poster} className="w-8 h-12 object-cover rounded" />}
-            <div>
-            <p className="font-bold text-sm text-white">{match.title} <span className="text-white/40">({match.year})</span></p>
-            <p className="text-xs text-white/40">{match.links?.length || 0} existing links • {match.type}</p>
+            <div key={match._id} className="flex items-center justify-between p-3 bg-white/5 rounded-lg border border-white/10 gap-3">
+            <div className="flex items-center gap-3 min-w-0">
+            {(match as any).poster && <img src={(match as any).poster} className="w-8 h-12 object-cover rounded shrink-0" />}
+            <div className="min-w-0">
+            <p className="font-bold text-sm text-white truncate">{match.title}</p>
+            <p className="text-xs text-white/40">{match.year && <span className="mr-2">{match.year}</span>}{match.links?.length || 0} existing links · {match.type}</p>
+            {(match as any).tmdbId && <p className="text-[10px] text-green-400/60 font-mono">TMDB #{(match as any).tmdbId}</p>}
             </div>
             </div>
-            <Button size="sm" color="primary" onPress={() => setSelectedMergeId(match._id)}>Merge & Update This</Button>
+            <Button size="sm" color="primary" className="shrink-0" onPress={() => setSelectedMergeId(match._id)}>Merge Here</Button>
             </div>
           ))}
-          <div className="flex justify-end mt-2">
-          <Button size="sm" variant="flat" className="text-white/60 bg-white/5 border border-white/10" onPress={() => setSelectedMergeId("NEW")}>Create as New Entry Anyway</Button>
+          <div className="flex justify-end mt-1">
+          <Button size="sm" variant="flat" className="text-white/60 bg-white/5 border border-white/10" onPress={() => setSelectedMergeId("NEW")}>Add as New Entry</Button>
           </div>
           </div>
           </div>
@@ -605,7 +661,8 @@ export default function AdminPage() {
         {selectedMergeId && selectedMergeId !== "NEW" && (
           <div className="flex items-center gap-2 p-3 rounded-xl bg-blue-500/10 border border-blue-500/30 text-blue-400 text-sm">
           <GitMerge className="w-4 h-4" />
-          <strong>Merge Mode:</strong> Saving will add missing links and update existing ones for <span className="text-white">{existingMatches.find(m => m._id === selectedMergeId)?.title}</span>.
+          <strong>Merge Mode:</strong> Saving will add missing links and update existing ones for <span className="text-white ml-1">{existingMatches.find(m => m._id === selectedMergeId)?.title}</span>.
+          <Button size="sm" variant="flat" className="ml-auto text-white/40 text-xs border border-white/10 shrink-0" onPress={() => setSelectedMergeId(null)}>Change</Button>
           </div>
         )}
 
@@ -615,7 +672,7 @@ export default function AdminPage() {
         <Button size="sm" variant="flat" onPress={() => setManualEditMode(!manualEditMode)} startContent={manualEditMode ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />} className="text-white/40 border border-white/10 bg-white/5 text-xs">
         {manualEditMode ? "Collapse Edit" : "Edit Fields"}
         </Button>
-        <Button size="sm" className="bg-green-600 text-white font-bold" isLoading={manualSaving} isDisabled={existingMatches.length > 0 && selectedMergeId === null} onPress={handleManualSave} startContent={!manualSaving && <Save className="w-4 h-4" />}>
+        <Button size="sm" className="bg-green-600 text-white font-bold" isLoading={manualSaving} isDisabled={(existingMatches.length > 0 && selectedMergeId === null) || (tmdbPickerOpen && tmdbCandidates.length > 1)} onPress={handleManualSave} startContent={!manualSaving && <Save className="w-4 h-4" />}>
         {manualSaving ? "Saving…" : selectedMergeId === "NEW" ? "Save New Entry" : "Commit Merge"}
         </Button>
         </div>
@@ -623,9 +680,14 @@ export default function AdminPage() {
 
         <div className="flex gap-2 items-center p-3 rounded-xl bg-white/5 border border-white/10">
         <div className="flex-1">
-        <Input variant="underlined" placeholder="Wrong result? Paste the correct TMDB URL to override… e.g. https://www.themoviedb.org/movie/550" value={manualTmdbUrl} onValueChange={setManualTmdbUrl} classNames={{ input: "text-sm text-white/70 placeholder:text-white/20" }} startContent={<Wand2 className="w-4 h-4 text-brand shrink-0" />} onKeyDown={(e) => e.key === "Enter" && handleManualTmdbOverride()} />
+        <Input variant="underlined" placeholder="Wrong TMDB result? Paste TMDB URL to override… e.g. https://www.themoviedb.org/movie/550" value={manualTmdbUrl} onValueChange={setManualTmdbUrl} classNames={{ input: "text-sm text-white/70 placeholder:text-white/20" }} startContent={<Wand2 className="w-4 h-4 text-brand shrink-0" />} onKeyDown={(e) => e.key === "Enter" && handleManualTmdbOverride()} />
         </div>
         <Button size="sm" className="bg-brand text-white font-bold shrink-0 px-4" isLoading={manualTmdbLoading} isDisabled={!manualTmdbUrl.trim()} onPress={handleManualTmdbOverride}>Re-fetch</Button>
+        {tmdbCandidates.length > 1 && !tmdbPickerOpen && (
+          <Button size="sm" variant="flat" className="shrink-0 text-purple-400 border border-purple-400/30 bg-purple-400/10 text-xs" onPress={() => setTmdbPickerOpen(true)}>
+          Pick TMDB ({tmdbCandidates.length})
+          </Button>
+        )}
         </div>
 
         <div className="flex items-center gap-4 p-4 rounded-xl bg-white/5 border border-white/10">
@@ -635,7 +697,6 @@ export default function AdminPage() {
         <div className="flex flex-wrap gap-2 mt-1">
         {manualPreview.year && <span className="text-xs text-white/40">{manualPreview.year}</span>}
         {manualPreview.type && <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded bg-white/10 text-white/60">{manualPreview.type}</span>}
-        {manualPreview.language && <span className="text-xs text-white/40">{manualPreview.language}</span>}
         {manualPreview.tmdbId && <span className="text-[10px] text-green-400 font-bold">✓ TMDB #{manualPreview.tmdbId}</span>}
         </div>
         </div>
@@ -667,7 +728,6 @@ export default function AdminPage() {
           <Input label="Status" variant="bordered" size="sm" placeholder="e.g. Released, Ended" value={manualPreview.status || ""} onValueChange={(v) => setManualPreview({ ...manualPreview, status: v })} />
           <Input label="Country" variant="bordered" size="sm" placeholder="e.g. US, IN, KR" value={manualPreview.country || ""} onValueChange={(v) => setManualPreview({ ...manualPreview, country: v })} />
           </div>
-          <Input label="Language" variant="bordered" size="sm" value={manualPreview.language || ""} onValueChange={(v) => setManualPreview({ ...manualPreview, language: v })} />
           <Input label="Audio (comma-separated)" variant="bordered" size="sm" placeholder="e.g. Hindi, English, Tamil" value={(manualPreview.audio || []).join(", ")} onValueChange={(v) => setManualPreview({ ...manualPreview, audio: v.split(",").map((s: string) => s.trim()).filter(Boolean) })} />
           <Input label="Genre (comma-separated)" variant="bordered" size="sm" value={(manualPreview.genre || []).join(", ")} onValueChange={(v) => setManualPreview({ ...manualPreview, genre: v.split(",").map((s: string) => s.trim()).filter(Boolean) })} />
           <Input label="Director" variant="bordered" size="sm" value={manualPreview.director || ""} onValueChange={(v) => setManualPreview({ ...manualPreview, director: v })} />
@@ -694,7 +754,6 @@ export default function AdminPage() {
             <Input label="Size" size="sm" variant="underlined" value={link.size || ""} onValueChange={(v) => updateManualLink(idx, "size", v)} />
             </div>
             <div className="grid grid-cols-2 gap-2">
-            <Input label="Language" size="sm" variant="underlined" value={link.language || ""} onValueChange={(v) => updateManualLink(idx, "language", v)} />
             <Input label="Season" size="sm" variant="underlined" type="number" value={String(link.season || "")} onValueChange={(v) => updateManualLink(idx, "season", v ? Number(v) : null)} />
             </div>
             </div>
@@ -748,7 +807,6 @@ export default function AdminPage() {
         <SelectItem key="anime">Anime</SelectItem>
         </Select>
         </div>
-        <Input label="Language" variant="bordered" value={selectedMovie.language} onValueChange={(v) => setSelectedMovie({...selectedMovie, language: v})} />
         <Input label="Audio (comma-separated)" variant="bordered" placeholder="e.g. Hindi, English, Tamil" value={(selectedMovie.audio || []).join(", ")} onValueChange={(v) => setSelectedMovie({...selectedMovie, audio: v.split(",").map(s => s.trim()).filter(Boolean)})} />
         <Textarea label="Description" variant="bordered" minRows={4} value={selectedMovie.description} onValueChange={(v) => setSelectedMovie({...selectedMovie, description: v})} />
         <Input label="Poster URL" variant="bordered" placeholder="https://..." value={selectedMovie.poster || ""} onValueChange={(v) => setSelectedMovie({...selectedMovie, poster: v})} />

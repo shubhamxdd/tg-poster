@@ -177,7 +177,6 @@ export const parseManualMessage = (text) => {
           url,
           quality,
           size,
-          language, // same language for all links — from line 2
           season,
           episode,
           filename: currentFilename,
@@ -202,7 +201,6 @@ export const parseManualMessage = (text) => {
     title,
     type,
     year,
-    language,
     audio: audioLanguages,
     links,
     link: links[0]?.url || '',
