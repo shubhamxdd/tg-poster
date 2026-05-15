@@ -3,7 +3,6 @@ export type Link = {
   url: string;
   quality?: string;
   size?: string;
-  language?: string;
   season?: number | null;
   episode?: number | null;
   filename?: string;
@@ -26,7 +25,6 @@ export type Movie = {
   backdrop?: string;
   genre: string[];
   year: number | null;
-  language: string;
   audio?: string[];
   description: string;
   rating?: string;

@@ -11,6 +11,47 @@ const BACKDROP_BASE_URL = 'https://image.tmdb.org/t/p/original';
  * TMDB Service
  * Fetches movie/series details, posters, and cast.
  */
+
+/**
+ * Search TMDB and return all candidate results (lightweight — no full detail fetch).
+ * Used by the admin to pick the correct entry when there are multiple matches.
+ */
+export const searchTMDBCandidates = async (title, type, year) => {
+  const apiKey = process.env.TMDB_API_KEY;
+  if (!apiKey || apiKey === 'your_tmdb_api_key') return [];
+
+  try {
+    const tmdbType = type === 'series' || type === 'anime' ? 'tv' : 'movie';
+    const searchResponse = await axios.get(`${TMDB_BASE_URL}/search/${tmdbType}`, {
+      params: {
+        api_key: apiKey,
+        query: title,
+        ...(tmdbType === 'movie' ? { year } : { first_air_date_year: year }),
+      },
+    });
+
+    const results = searchResponse.data.results || [];
+    // Return up to 8 candidates with just enough info to display a picker
+    return results.slice(0, 8).map(r => ({
+      tmdbId:       String(r.id),
+      title:        r.title || r.name || null,
+      originalTitle:r.original_title || r.original_name || null,
+      year:         r.release_date
+                      ? new Date(r.release_date).getFullYear()
+                      : r.first_air_date
+                        ? new Date(r.first_air_date).getFullYear()
+                        : null,
+      poster:       r.poster_path ? `${IMAGE_BASE_URL}${r.poster_path}` : null,
+      overview:     r.overview ? r.overview.slice(0, 150) + (r.overview.length > 150 ? '…' : '') : null,
+      rating:       r.vote_average ? r.vote_average.toFixed(1) : null,
+      tmdbType,
+    }));
+  } catch (err) {
+    console.error('[TMDB] searchCandidates error:', err.message);
+    return [];
+  }
+};
+
 export const fetchFullDetailsFromTMDB = async (title, type, year) => {
   const apiKey = process.env.TMDB_API_KEY;
   if (!apiKey || apiKey === 'your_tmdb_api_key') {
@@ -34,7 +75,19 @@ export const fetchFullDetailsFromTMDB = async (title, type, year) => {
     const results = searchResponse.data.results;
     if (!results || results.length === 0) return null;
 
-    const bestMatch = results[0];
+    // Pick the best match: exact title + year match preferred, else first result
+    let bestMatch = results[0];
+    if (year && results.length > 1) {
+      const exactYear = results.find(r => {
+        const rYear = r.release_date
+          ? new Date(r.release_date).getFullYear()
+          : r.first_air_date
+            ? new Date(r.first_air_date).getFullYear()
+            : null;
+        return rYear === year;
+      });
+      if (exactYear) bestMatch = exactYear;
+    }
     const tmdbId = bestMatch.id;
 
     // 2. Fetch full details, credits, and images
@@ -73,7 +126,6 @@ export const fetchFullDetailsFromTMDB = async (title, type, year) => {
       runtime: details.runtime || (details.episode_run_time ? details.episode_run_time[0] : null),
       status: details.status,
       year: yearFromTMDB,
-      language: details.spoken_languages?.[0]?.english_name || details.original_language,
       genre: details.genres?.map(g => g.name) || [],
       country: details.origin_country ? details.origin_country[0] : (details.production_countries ? details.production_countries[0]?.name : null),
       director: tmdbType === 'movie' 
@@ -89,6 +141,63 @@ export const fetchFullDetailsFromTMDB = async (title, type, year) => {
 
   } catch (error) {
     console.error('[TMDB] Error:', error.message);
+    return null;
+  }
+};
+
+/**
+ * Fetch full TMDB details by a known tmdbId + type.
+ * Used when the admin manually selects a candidate from the picker.
+ */
+export const fetchFullDetailsByTMDBId = async (tmdbId, tmdbType) => {
+  const apiKey = process.env.TMDB_API_KEY;
+  if (!apiKey || apiKey === 'your_tmdb_api_key') return null;
+
+  try {
+    const detailEndpoint = `${TMDB_BASE_URL}/${tmdbType}/${tmdbId}`;
+    const [detailRes, creditRes, imagesRes] = await Promise.all([
+      axios.get(detailEndpoint, { params: { api_key: apiKey, language: 'en-US' } }),
+      axios.get(`${detailEndpoint}/credits`, { params: { api_key: apiKey } }),
+      axios.get(`${detailEndpoint}/images`, { params: { api_key: apiKey, include_image_language: 'null,en' } }),
+    ]);
+
+    const details = detailRes.data;
+    const credits = creditRes.data;
+    const images  = imagesRes.data;
+
+    const allBackdrops    = images.backdrops || [];
+    const nullLangBackdrops = allBackdrops.filter(b => !b.iso_639_1);
+    const sortedBackdrops = (nullLangBackdrops.length > 0 ? nullLangBackdrops : allBackdrops)
+      .sort((a, b) => b.vote_average - a.vote_average);
+    const backdropPath = sortedBackdrops[0]?.file_path || details.backdrop_path || null;
+
+    const releaseDate  = details.release_date || details.first_air_date;
+    const yearFromTMDB = releaseDate ? new Date(releaseDate).getFullYear() : null;
+
+    return {
+      tmdbId: String(tmdbId),
+      title:        details.title || details.name || null,
+      originalTitle:details.original_title || details.original_name || null,
+      poster:       details.poster_path ? `${IMAGE_BASE_URL}${details.poster_path}` : null,
+      backdrop:     backdropPath ? `${BACKDROP_BASE_URL}${backdropPath}` : null,
+      rating:       details.vote_average ? details.vote_average.toFixed(1) : null,
+      runtime:      details.runtime || (details.episode_run_time ? details.episode_run_time[0] : null),
+      status:       details.status,
+      year:         yearFromTMDB,
+      genre:        details.genres?.map(g => g.name) || [],
+      country:      details.origin_country?.[0] || details.production_countries?.[0]?.name || null,
+      director:     tmdbType === 'movie'
+        ? credits.crew?.find(c => c.job === 'Director')?.name
+        : (details.created_by?.[0]?.name || null),
+      cast: credits.cast?.slice(0, 10).map(c => ({
+        name: c.name,
+        character: c.character,
+        profile_path: c.profile_path ? `${IMAGE_BASE_URL}${c.profile_path}` : null,
+      })) || [],
+      description: details.overview || null,
+    };
+  } catch (err) {
+    console.error('[TMDB] fetchFullDetailsByTMDBId error:', err.message);
     return null;
   }
 };

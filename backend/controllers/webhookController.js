@@ -69,7 +69,9 @@ export const handleTelegramWebhook = async (req, res) => {
 
     // 4. Resolve Metadata
     const filenameLang = detectLanguage(text);
-    const finalLanguage = filenameLang || movieData.language || tmdbDetails?.language || existingMovie?.language || 'Unknown';
+    // language field removed — store detected langs in audio array instead
+    const audioLangs = movieData.audio?.length ? movieData.audio
+      : filenameLang ? [filenameLang] : [];
     
     let posterUrl = movieData.poster;
     if (!posterUrl && msg.photo?.length > 0) {
@@ -91,7 +93,7 @@ export const handleTelegramWebhook = async (req, res) => {
     const mergedData = {
       ...cleanMovieData,
       ...tmdbDetails,
-      language: finalLanguage,
+      audio: audioLangs.length ? audioLangs : (existingMovie?.audio || []),
       poster: posterUrl,
       rawMessage: text,
       telegramMsgId: msgId,

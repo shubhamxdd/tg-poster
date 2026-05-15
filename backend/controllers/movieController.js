@@ -1,6 +1,8 @@
 import Movie from '../models/Movie.js';
 import mongoose from 'mongoose';
 import axios from 'axios';
+import { parseManualMessage } from '../services/manualParser.js';
+import { fetchFullDetailsFromTMDB, searchTMDBCandidates, fetchFullDetailsByTMDBId } from '../services/tmdbService.js';
 
 const TMDB_BASE_URL = 'https://api.themoviedb.org/3';
 const IMAGE_BASE_URL = 'https://image.tmdb.org/t/p/w500';
@@ -110,12 +112,11 @@ export const adminAuth = (req, res, next) => {
 
 export const getMovies = async (req, res) => {
   try {
-    const { type, genre, language, search, sortBy, page = 1, limit = 24 } = req.query;
+    const { type, genre, search, sortBy, page = 1, limit = 24 } = req.query;
     
     const query = {};
     if (type) query.type = type;
     if (genre) query.genre = genre;
-    if (language) query.language = language;
     if (search) query.title = { $regex: search, $options: 'i' };
 
     let sortQuery = { addedAt: -1 }; // Default
@@ -275,4 +276,187 @@ export const bulkUpdateDescriptions = async (req, res) => {
 
   res.write(JSON.stringify({ type: 'done', updated, failed, total: movies.length }) + '\n');
   res.end();
+};
+
+// ─── TMDB Search Helpers ───────────────────────────────────────────────────────
+
+/**
+ * GET /api/movies/admin/tmdb-search?title=&type=&year=
+ * Returns up to 8 TMDB candidate results for the admin to pick from.
+ */
+export const searchTmdbCandidates = async (req, res) => {
+  const { title, type = 'movie', year } = req.query;
+  if (!title) return res.status(400).json({ message: 'title is required' });
+
+  const candidates = await searchTMDBCandidates(title, type, year ? parseInt(year, 10) : undefined);
+  res.json({ candidates });
+};
+
+/**
+ * GET /api/movies/admin/tmdb-by-id?tmdbId=&tmdbType=
+ * Fetches full TMDB details for a specific tmdbId selected by the admin.
+ */
+export const fetchTmdbById = async (req, res) => {
+  const { tmdbId, tmdbType = 'movie' } = req.query;
+  if (!tmdbId) return res.status(400).json({ message: 'tmdbId is required' });
+
+  const details = await fetchFullDetailsByTMDBId(tmdbId, tmdbType);
+  if (!details) return res.status(404).json({ message: 'TMDB entry not found' });
+  res.json(details);
+};
+
+// ─── Manual Parser ─────────────────────────────────────────────────────────────
+
+/**
+ * POST /api/movies/admin/parse-manual
+ * Body: { text: string }
+ *
+ * 1. Runs the regex-based manual parser.
+ * 2. Optionally enriches with TMDB (same logic as webhookController).
+ * 3. Returns the preview data — does NOT save to DB.
+ */
+export const parseManual = async (req, res) => {
+  const { text } = req.body;
+  if (!text || !text.trim()) {
+    return res.status(400).json({ message: 'text body field is required' });
+  }
+
+  try {
+    // Step 1: Regex parse
+    const parsed = parseManualMessage(text);
+    console.log(`[ManualParser] Title: "${parsed.title}" | Links: ${parsed.links?.length}`);
+
+    // Step 2: Search DB for existing matches (improved: score by title similarity + year)
+    const normalize = (s) => (s || '').toLowerCase().replace(/[^a-z0-9]/g, ' ').replace(/\s+/g, ' ').trim();
+    const parsedNorm = normalize(parsed.title);
+    const parsedYear = parsed.year;
+
+    // Pull all movies (titles + years only — lean for speed)
+    const allMovies = await Movie.find({}, { _id: 1, title: 1, originalTitle: 1, year: 1, type: 1, links: 1, poster: 1, tmdbId: 1 }).lean();
+
+    const dbMatches = allMovies.filter(m => {
+      const dbNorm  = normalize(m.title);
+      const dbOrig  = normalize(m.originalTitle);
+      const titleHit = dbNorm === parsedNorm || dbOrig === parsedNorm
+        || (dbNorm.length > 3 && parsedNorm.includes(dbNorm))
+        || (parsedNorm.length > 3 && dbNorm.includes(parsedNorm));
+
+      if (!titleHit) return false;
+
+      // If both have a year, they must be within 1 year of each other to avoid false positives
+      if (parsedYear && m.year && Math.abs(m.year - parsedYear) > 1) return false;
+      return true;
+    });
+
+    // Step 3: TMDB enrichment — fetch top result AND all candidates
+    let tmdbDetails   = null;
+    let tmdbCandidates = [];
+    try {
+      // Get candidates list first (cheap)
+      tmdbCandidates = await searchTMDBCandidates(parsed.title, parsed.type, parsed.year);
+
+      if (tmdbCandidates.length === 1) {
+        // Only one result — auto-select it
+        tmdbDetails = await fetchFullDetailsByTMDBId(tmdbCandidates[0].tmdbId, tmdbCandidates[0].tmdbType);
+      } else if (tmdbCandidates.length > 1) {
+        // Multiple candidates — pick the best one automatically based on year match,
+        // but still return the full candidate list so admin can override
+        const yearMatch = parsed.year
+          ? tmdbCandidates.find(c => c.year === parsed.year)
+          : null;
+        const autoPickId = (yearMatch || tmdbCandidates[0]);
+        tmdbDetails = await fetchFullDetailsByTMDBId(autoPickId.tmdbId, autoPickId.tmdbType);
+      }
+
+      if (tmdbDetails) {
+        console.log(`[ManualParser] TMDB found: ${tmdbDetails.title} (${tmdbDetails.tmdbId}) | ${tmdbCandidates.length} candidates`);
+      }
+    } catch (tmdbErr) {
+      console.warn('[ManualParser] TMDB lookup failed (non-fatal):', tmdbErr.message);
+    }
+
+    // Step 4: Merge
+    const merged = {
+      ...(tmdbDetails || {}),
+      title:    tmdbDetails?.title    || parsed.title,
+      year:     tmdbDetails?.year     || parsed.year,
+      // language field removed — audio array is the single source of truth
+      audio:    parsed.audio?.length  ? parsed.audio : [],
+      type:     parsed.type,
+      links: parsed.links,
+      link:  parsed.links[0]?.url || '',
+    };
+
+    res.json({
+      success: true,
+      data: merged,
+      // Always return candidates so the UI can offer a picker
+      tmdbCandidates: tmdbCandidates.length > 1 ? tmdbCandidates : [],
+      // DB matches for the duplicate-check UI
+      dbMatches,
+    });
+  } catch (err) {
+    console.error('[ManualParser] Error:', err.message);
+    res.status(500).json({ message: 'Parse error: ' + err.message });
+  }
+};
+
+/**
+ * POST /api/movies/admin/save-manual
+ * Body: { movieData: object }
+ *
+ * Saves a manually-parsed (and optionally edited) movie to DB.
+ * Handles duplicate TMDB IDs (merges links) and creates new entries.
+ * Uses a synthetic telegramMsgId based on current timestamp to satisfy the unique index.
+ */
+export const saveManual = async (req, res) => {
+  const { movieData } = req.body;
+  if (!movieData || !movieData.title) {
+    return res.status(400).json({ message: 'movieData with at least a title is required' });
+  }
+
+  try {
+    // Try to find an existing movie by tmdbId or title+year
+    let existingMovie = null;
+    if (movieData.tmdbId) {
+      existingMovie = await Movie.findOne({ tmdbId: movieData.tmdbId });
+    }
+    if (!existingMovie && movieData.title) {
+      const query = { title: movieData.title };
+      if (movieData.year) query.year = movieData.year;
+      existingMovie = await Movie.findOne(query);
+    }
+
+    if (existingMovie) {
+      // Merge: add unique new links only
+      const currentLinks = existingMovie.links || [];
+      const incomingLinks = movieData.links || [];
+      const uniqueNewLinks = incomingLinks.filter(nLink =>
+        !currentLinks.some(cLink => cLink.url === nLink.url)
+      );
+
+      const { links: _, ...restData } = movieData;
+      existingMovie.set(restData);
+      uniqueNewLinks.forEach(link => existingMovie.links.push(link));
+
+      await existingMovie.save();
+      console.log(`[ManualParser] UPDATED: ${existingMovie.title} (+${uniqueNewLinks.length} links)`);
+      return res.status(200).json({ success: true, action: 'updated', movie: existingMovie });
+    }
+
+    // New entry — generate a synthetic negative telegramMsgId so it doesn't clash with real TG IDs
+    const syntheticMsgId = -(Date.now());
+    const newMovie = new Movie({
+      ...movieData,
+      telegramMsgId: syntheticMsgId,
+      rawMessage: movieData.rawMessage || '',
+      addedAt: new Date(),
+    });
+    await newMovie.save();
+    console.log(`[ManualParser] CREATED: ${newMovie.title}`);
+    return res.status(201).json({ success: true, action: 'created', movie: newMovie });
+  } catch (err) {
+    console.error('[ManualParser] Save error:', err.message);
+    res.status(500).json({ message: 'Save error: ' + err.message });
+  }
 };

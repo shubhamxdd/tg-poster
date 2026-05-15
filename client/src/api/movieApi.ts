@@ -11,7 +11,6 @@ export const movieApi = {
   getMovies: async (params: {
     type?: string;
     genre?: string;
-    language?: string;
     search?: string;
     sortBy?: string;
     page?: number;
@@ -88,5 +87,50 @@ export const movieApi = {
         if (line.trim()) onProgress(JSON.parse(line));
       }
     }
+  },
+
+  /**
+   * Searches TMDB for candidates matching title+type+year.
+   * Returns up to 8 lightweight results for the admin picker.
+   */
+  searchTmdbCandidates: async (title: string, type: string, year: number | null, password: string) => {
+    const response = await api.get('/movies/admin/tmdb-search', {
+      params: { title, type, year: year || undefined },
+      headers: { 'x-admin-password': password },
+    });
+    return response.data as { candidates: any[] };
+  },
+
+  /**
+   * Fetches full TMDB details for a specific tmdbId chosen by the admin.
+   */
+  fetchTmdbById: async (tmdbId: string, tmdbType: string, password: string) => {
+    const response = await api.get('/movies/admin/tmdb-by-id', {
+      params: { tmdbId, tmdbType },
+      headers: { 'x-admin-password': password },
+    });
+    return response.data;
+  },
+
+  /**
+   * Parses a raw Telegram message text using the server-side regex parser.
+   * Returns preview data enriched with TMDB. Does NOT save to DB.
+   */
+  parseManual: async (text: string, password: string) => {
+    const response = await api.post('/movies/admin/parse-manual', { text }, {
+      headers: { 'x-admin-password': password },
+    });
+    return response.data as { success: boolean; data: any };
+  },
+
+  /**
+   * Saves manually-parsed (and optionally edited) movie data to the database.
+   * Merges with existing entries if same tmdbId or title+year is found.
+   */
+  saveManual: async (movieData: any, password: string) => {
+    const response = await api.post('/movies/admin/save-manual', { movieData }, {
+      headers: { 'x-admin-password': password },
+    });
+    return response.data as { success: boolean; action: string; movie: any };
   },
 };
