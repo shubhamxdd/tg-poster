@@ -55,6 +55,10 @@ export default function AdminPage() {
 
   const [existingMatches, setExistingMatches] = useState<Movie[]>([]);
   const [selectedMergeId, setSelectedMergeId] = useState<string | "NEW" | null>(null);
+  const [updateMode, setUpdateMode] = useState<"append" | "replace" | null>(null);
+  const [showMergeModal, setShowMergeModal] = useState(false);
+  const [mergeTarget, setMergeTarget] = useState<Movie | null>(null);
+  const [saveResult, setSaveResult] = useState<{ appended?: number; replaced?: number; duplicatesSkipped?: number } | null>(null);
   const [parserConfidence, setParserConfidence] = useState<"High" | "Medium" | "Low">("High");
   const [tmdbCandidates, setTmdbCandidates] = useState<any[]>([]);
   const [tmdbPickerOpen, setTmdbPickerOpen] = useState(false);
@@ -228,9 +232,10 @@ export default function AdminPage() {
       const labelLower = (link.label || "").toLowerCase();
       const fullStr = `${link.label || ''} ${link.filename || ''} ${link.url || ''}`.toUpperCase();
 
+      // isPackage must only reflect THIS link, not the whole pasted text
       const isPackage = /batch|complete|zip/i.test(urlText) ||
       /batch|complete|zip/i.test(labelLower) ||
-      /batch|complete|zip/i.test(textLower);
+      /batch|complete|zip/i.test((link.filename || '').toLowerCase());
 
       let newLabel = link.label;
       let ep = link.episode;
@@ -269,8 +274,12 @@ export default function AdminPage() {
     setManualParsing(true);
     setManualPreview(null);
     setManualSaved(false);
+    setSaveResult(null);
     setExistingMatches([]);
     setSelectedMergeId(null);
+    setUpdateMode(null);
+    setMergeTarget(null);
+    setShowMergeModal(false);
     setTmdbCandidates([]);
     setTmdbPickerOpen(false);
 
@@ -329,32 +338,13 @@ export default function AdminPage() {
     setManualSaving(true);
     try {
       if (selectedMergeId && selectedMergeId !== "NEW") {
-        const existingTarget = movies.find(m => m._id === selectedMergeId);
-        if (!existingTarget) throw new Error("Merge target not found");
-
-        const mergedLinks = [...(existingTarget.links || [])];
-
-        (manualPreview.links || []).forEach((newLink: any) => {
-          const duplicateIdx = mergedLinks.findIndex(existing =>
-          existing.label === newLink.label && existing.quality === newLink.quality
-          );
-
-          if (duplicateIdx !== -1) {
-            mergedLinks[duplicateIdx] = newLink;
-          } else {
-            mergedLinks.push(newLink);
-          }
-        });
-
-        const updatedData = {
-          ...existingTarget,
-          description: existingTarget.description || manualPreview.description,
-          poster: existingTarget.poster || manualPreview.poster,
-          backdrop: existingTarget.backdrop || manualPreview.backdrop,
-          links: mergedLinks
-        };
-
-        await movieApi.updateMovie(existingTarget._id, updatedData, password);
+        // Use saveManual with targetId — backend handles safe append (no quality replacement)
+        await movieApi.saveManual(
+          { ...manualPreview, rawMessage: manualText },
+          password,
+          selectedMergeId,
+          "append"
+        );
       } else {
         await movieApi.saveManual({ ...manualPreview, rawMessage: manualText }, password);
       }

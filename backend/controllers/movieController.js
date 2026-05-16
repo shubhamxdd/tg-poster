@@ -113,32 +113,87 @@ export const adminAuth = (req, res, next) => {
 export const getMovies = async (req, res) => {
   try {
     const { type, genre, search, sortBy, page = 1, limit = 24 } = req.query;
-    
-    const query = {};
-    if (type) query.type = type;
-    if (genre) query.genre = genre;
-    if (search) query.title = { $regex: search, $options: 'i' };
+    const pageNum  = Math.max(1, parseInt(page,  10) || 1);
+    const limitNum = Math.min(96, Math.max(1, parseInt(limit, 10) || 24));
 
-    let sortQuery = { addedAt: -1 }; // Default
-    if (sortBy === 'year') sortQuery = { year: -1, addedAt: -1 };
+    // ── Base filter (type + genre always apply) ───────────────────────────
+    const baseFilter = {};
+    if (type)  baseFilter.type  = type;
+    if (genre) baseFilter.genre = { $elemMatch: { $regex: `^${genre}$`, $options: 'i' } };
+
+    // ── Search ────────────────────────────────────────────────────────────
+    if (search && search.trim()) {
+      const raw    = search.trim();
+      const isYear = /^\d{4}$/.test(raw);
+
+      if (isYear) {
+        // Pure year query — return everything from that year
+        baseFilter.year = parseInt(raw, 10);
+        const [movies, count] = await Promise.all([
+          Movie.find(baseFilter)
+            .sort({ rating: -1, addedAt: -1 })
+            .skip((pageNum - 1) * limitNum)
+            .limit(limitNum)
+            .lean(),
+          Movie.countDocuments(baseFilter),
+        ]);
+        return res.json({ movies, totalPages: Math.ceil(count / limitNum), currentPage: pageNum, total: count });
+      }
+
+      // Tokenise — strip stopwords — require ALL tokens in title/originalTitle
+      const tokens = raw.replace(/[^\w\s]/g, " ").split(/\s+/).filter(Boolean);
+      const STOPWORDS = new Set(["the","a","an","of","in","on","at","to","and","or","is","it","by","as","be","my","he","she","we","do","so","if","up","vs"]);
+      const searchTokens = tokens.filter(t => t.length > 1 && !STOPWORDS.has(t.toLowerCase()));
+      const finalTokens  = searchTokens.length > 0 ? searchTokens : tokens;
+
+      const tokenREs = finalTokens.map(t => new RegExp(t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i"));
+
+      // AND: every token must match title OR originalTitle
+      baseFilter.$and = tokenREs.map(re => ({
+        $or: [
+          { title:         { $regex: re.source, $options: "i" } },
+          { originalTitle: { $regex: re.source, $options: "i" } },
+        ]
+      }));
+
+      const rawResults = await Movie.find(baseFilter).lean();
+
+      // Relevance scoring — title only
+      const rawL     = raw.toLowerCase();
+      const phraseRE = new RegExp(finalTokens.map(t => t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("\\s+"), "i");
+
+      const scored = rawResults.map(m => {
+        const titleL = (m.title         || "").toLowerCase();
+        const origL  = (m.originalTitle || "").toLowerCase();
+        let score =
+          (titleL === rawL || origL === rawL)                             ? 1000 :
+          (titleL.startsWith(rawL) || origL.startsWith(rawL))            ?  800 :
+          (phraseRE.test(m.title)  || phraseRE.test(m.originalTitle))    ?  600 : 200;
+        score += parseFloat(m.rating || 0) * 2;
+        return { ...m, _score: score };
+      });
+
+      scored.sort((a, b) => b._score - a._score);
+
+      const total    = scored.length;
+      const paginated = scored.slice((pageNum - 1) * limitNum, pageNum * limitNum);
+      return res.json({ movies: paginated, totalPages: Math.ceil(total / limitNum), currentPage: pageNum, total });
+    }
+
+    // ── No search — standard sorted + paginated fetch ─────────────────────
+    let sortQuery = { addedAt: -1 };
+    if (sortBy === 'year')   sortQuery = { year: -1, addedAt: -1 };
     if (sortBy === 'rating') sortQuery = { rating: -1, addedAt: -1 };
-    if (sortBy === 'title') sortQuery = { title: 1 };
-    if (sortBy === 'addedAt') sortQuery = { addedAt: -1 };
+    if (sortBy === 'title')  sortQuery = { title: 1 };
 
-    const movies = await Movie.find(query)
-      .sort(sortQuery)
-      .limit(limit * 1)
-      .skip((page - 1) * limit)
-      .exec();
+    const [movies, count] = await Promise.all([
+      Movie.find(baseFilter).sort(sortQuery).skip((pageNum - 1) * limitNum).limit(limitNum).lean(),
+      Movie.countDocuments(baseFilter),
+    ]);
 
-    const count = await Movie.countDocuments(query);
-
-    res.json({
-      movies,
-      totalPages: Math.ceil(count / limit),
-      currentPage: page,
-    });
+    res.json({ movies, totalPages: Math.ceil(count / limitNum), currentPage: pageNum, total: count });
   } catch (error) {
+    console.error('[getMovies]', error.message);
     res.status(500).json({ message: error.message });
   }
 };
@@ -403,51 +458,105 @@ export const parseManual = async (req, res) => {
 
 /**
  * POST /api/movies/admin/save-manual
- * Body: { movieData: object }
+ * Body: { movieData, targetId?, updateMode? }
  *
- * Saves a manually-parsed (and optionally edited) movie to DB.
- * Handles duplicate TMDB IDs (merges links) and creates new entries.
- * Uses a synthetic telegramMsgId based on current timestamp to satisfy the unique index.
+ * updateMode:
+ *   'new'     — create a brand-new entry (default when no targetId)
+ *   'append'  — keep all existing links, append new ones (skip exact-URL dupes)
+ *   'replace' — replace links that match quality+season+episode, keep the rest
+ *
+ * Returns:
+ *   { success, action, movie, appended?, replaced?, duplicatesSkipped? }
  */
 export const saveManual = async (req, res) => {
-  const { movieData } = req.body;
+  const { movieData, targetId, updateMode = 'append' } = req.body;
   if (!movieData || !movieData.title) {
     return res.status(400).json({ message: 'movieData with at least a title is required' });
   }
 
   try {
-    // Try to find an existing movie by tmdbId or title+year
-    let existingMovie = null;
-    if (movieData.tmdbId) {
-      existingMovie = await Movie.findOne({ tmdbId: movieData.tmdbId });
-    }
-    if (!existingMovie && movieData.title) {
-      const query = { title: movieData.title };
-      if (movieData.year) query.year = movieData.year;
-      existingMovie = await Movie.findOne(query);
-    }
+    // ── Merging into an existing entry ──────────────────────────────────────
+    if (targetId) {
+      const existingMovie = await Movie.findById(targetId);
+      if (!existingMovie) return res.status(404).json({ message: 'Target entry not found' });
 
-    if (existingMovie) {
-      // Merge: add unique new links only
       const currentLinks = existingMovie.links || [];
-      const incomingLinks = movieData.links || [];
-      const uniqueNewLinks = incomingLinks.filter(nLink =>
-        !currentLinks.some(cLink => cLink.url === nLink.url)
-      );
+      const incomingLinks = (movieData.links || []).map(l => ({
+        ...l,
+        source:   l.source   || null,
+        priority: l.priority || 'primary',
+        health:   l.health   || 'unverified',
+      }));
 
-      const { links: _, ...restData } = movieData;
-      existingMovie.set(restData);
-      uniqueNewLinks.forEach(link => existingMovie.links.push(link));
+      let finalLinks = [...currentLinks];
+      let duplicatesSkipped = 0;
+      let replaced = 0;
+      let appended = 0;
 
+      for (const newLink of incomingLinks) {
+        // Always skip exact-URL duplicates regardless of mode
+        const exactDupe = finalLinks.find(el => el.url === newLink.url);
+        if (exactDupe) { duplicatesSkipped++; continue; }
+
+        if (updateMode === 'replace') {
+          // replace mode: swap out the link with matching quality+season+episode
+          const matchIdx = finalLinks.findIndex(el =>
+            el.quality === newLink.quality &&
+            (el.season  ?? null) === (newLink.season  ?? null) &&
+            (el.episode ?? null) === (newLink.episode ?? null)
+          );
+          if (matchIdx !== -1) {
+            finalLinks[matchIdx] = newLink;
+            replaced++;
+          } else {
+            finalLinks.push(newLink);
+            appended++;
+          }
+        } else {
+          // append mode: always push — never touch existing links regardless of quality
+          finalLinks.push(newLink);
+          appended++;
+        }
+      }
+
+      // Update missing metadata fields only (never overwrite existing)
+      const metaFields = ['poster','backdrop','description','rating','genre','director','cast','originalTitle','tmdbId','country','runtime','status'];
+      const metaUpdate = {};
+      for (const f of metaFields) {
+        const cur = existingMovie[f];
+        const isEmpty = cur === null || cur === undefined || cur === '' || (Array.isArray(cur) && cur.length === 0);
+        if (isEmpty && movieData[f]) metaUpdate[f] = movieData[f];
+      }
+      // Merge audio without duplicates
+      const mergedAudio = [...new Set([...(existingMovie.audio || []), ...(movieData.audio || [])])];
+      if (mergedAudio.length) metaUpdate.audio = mergedAudio;
+
+      existingMovie.set({ ...metaUpdate, links: finalLinks });
       await existingMovie.save();
-      console.log(`[ManualParser] UPDATED: ${existingMovie.title} (+${uniqueNewLinks.length} links)`);
-      return res.status(200).json({ success: true, action: 'updated', movie: existingMovie });
+
+      console.log(`[ManualParser] MERGED (${updateMode}): ${existingMovie.title} | +${appended} added, ${replaced} replaced, ${duplicatesSkipped} skipped`);
+      return res.status(200).json({
+        success: true,
+        action: updateMode === 'replace' ? 'replaced' : 'appended',
+        appended,
+        replaced,
+        duplicatesSkipped,
+        movie: existingMovie,
+      });
     }
 
-    // New entry — generate a synthetic negative telegramMsgId so it doesn't clash with real TG IDs
+    // ── Brand-new entry ─────────────────────────────────────────────────────
+    const linksWithMeta = (movieData.links || []).map(l => ({
+      ...l,
+      source:   l.source   || null,
+      priority: l.priority || 'primary',
+      health:   l.health   || 'unverified',
+    }));
+
     const syntheticMsgId = -(Date.now());
     const newMovie = new Movie({
       ...movieData,
+      links: linksWithMeta,
       telegramMsgId: syntheticMsgId,
       rawMessage: movieData.rawMessage || '',
       addedAt: new Date(),
@@ -455,6 +564,7 @@ export const saveManual = async (req, res) => {
     await newMovie.save();
     console.log(`[ManualParser] CREATED: ${newMovie.title}`);
     return res.status(201).json({ success: true, action: 'created', movie: newMovie });
+
   } catch (err) {
     console.error('[ManualParser] Save error:', err.message);
     res.status(500).json({ message: 'Save error: ' + err.message });

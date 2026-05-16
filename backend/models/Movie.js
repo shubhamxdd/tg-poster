@@ -18,13 +18,16 @@ const movieSchema = new mongoose.Schema({
     type: String,
   },
   links: [{
-    label: { type: String, default: 'Download' },
-    url: { type: String, required: true },
-    quality: String,      // e.g. "1080p", "2160p"
-    size: String,         // e.g. "19.76GB"
-    season: Number,       // e.g. 1, 2
-    episode: Number,      // e.g. 1, 2 (for episode-wise links)
-    filename: String      // The full raw filename line
+    label:    { type: String, default: 'Download' },
+    url:      { type: String, required: true },
+    quality:  String,      // e.g. "1080p", "2160p"
+    size:     String,      // e.g. "19.76GB"
+    season:   Number,      // e.g. 1, 2
+    episode:  Number,      // e.g. 1, 2 (for episode-wise links)
+    filename: String,      // The full raw filename line
+    source:   { type: String, default: null },  // e.g. "GDFlix", "Pixeldrain", "Telegram"
+    priority: { type: String, enum: ['primary', 'backup'], default: 'primary' },
+    health:   { type: String, enum: ['working', 'broken', 'unverified'], default: 'unverified' },
   }],
   poster: {
     type: String,
