@@ -95,6 +95,8 @@ const movieSchema = new mongoose.Schema({
   }
 });
 
+movieSchema.index({ updatedAt: -1 });
+
 const Movie = mongoose.model('Movie', movieSchema);
 
 export default Movie;

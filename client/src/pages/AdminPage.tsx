@@ -501,7 +501,7 @@ export default function AdminPage() {
         <TableColumn>YEAR</TableColumn>
         <TableColumn>TYPE</TableColumn>
         <TableColumn>LINKS</TableColumn>
-        <TableColumn>ADDED ON</TableColumn>
+        <TableColumn>UPDATED</TableColumn>
         <TableColumn align="center">ACTIONS</TableColumn>
         </TableHeader>
         <TableBody loadingContent={<div>loading...</div>} isLoading={loading}>
@@ -516,7 +516,7 @@ export default function AdminPage() {
           <TableCell>{movie.year}</TableCell>
           <TableCell><span className="text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded bg-white/10">{movie.type}</span></TableCell>
           <TableCell>{movie.links?.length || 0} Links</TableCell>
-          <TableCell className="text-white/30 text-xs">{new Date(movie.addedAt).toLocaleDateString()}</TableCell>
+          <TableCell className="text-white/30 text-xs" title={`Added: ${new Date(movie.addedAt).toLocaleDateString()}`}>{new Date(movie.updatedAt || movie.addedAt).toLocaleDateString()}</TableCell>
           <TableCell>
           <div className="flex gap-2 justify-center">
           <Button isIconOnly variant="flat" size="sm" onPress={() => handleEdit(movie)} className="bg-white/5 hover:bg-blue-500/20 text-blue-400"><Edit className="w-4 h-4" /></Button>

@@ -38,6 +38,7 @@ export type Movie = {
   cast?: Cast[];
   telegramMsgId: number;
   addedAt: string;
+  updatedAt: string;
 };
 
 export type MovieResponse = {

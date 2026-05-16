@@ -164,7 +164,7 @@ export default function HomePage() {
                 value: "text-xs font-semibold text-white/70",
               }}
             >
-              <SelectItem key="addedAt">Date Added</SelectItem>
+              <SelectItem key="addedAt">Recently Updated</SelectItem>
               <SelectItem key="year">Release Year</SelectItem>
               <SelectItem key="rating">Top Rated</SelectItem>
               <SelectItem key="title">A - Z</SelectItem>

@@ -131,7 +131,7 @@ export const getMovies = async (req, res) => {
         baseFilter.year = parseInt(raw, 10);
         const [movies, count] = await Promise.all([
           Movie.find(baseFilter)
-            .sort({ rating: -1, addedAt: -1 })
+            .sort({ rating: -1, updatedAt: -1 })
             .skip((pageNum - 1) * limitNum)
             .limit(limitNum)
             .lean(),
@@ -181,10 +181,11 @@ export const getMovies = async (req, res) => {
     }
 
     // ── No search — standard sorted + paginated fetch ─────────────────────
-    let sortQuery = { addedAt: -1 };
-    if (sortBy === 'year')   sortQuery = { year: -1, addedAt: -1 };
-    if (sortBy === 'rating') sortQuery = { rating: -1, addedAt: -1 };
-    if (sortBy === 'title')  sortQuery = { title: 1 };
+    let sortQuery = { updatedAt: -1 };
+    if (sortBy === 'addedAt') sortQuery = { updatedAt: -1 };
+    if (sortBy === 'year')    sortQuery = { year: -1, updatedAt: -1 };
+    if (sortBy === 'rating')  sortQuery = { rating: -1, updatedAt: -1 };
+    if (sortBy === 'title')   sortQuery = { title: 1 };
 
     const [movies, count] = await Promise.all([
       Movie.find(baseFilter).sort(sortQuery).skip((pageNum - 1) * limitNum).limit(limitNum).lean(),
@@ -531,7 +532,7 @@ export const saveManual = async (req, res) => {
       const mergedAudio = [...new Set([...(existingMovie.audio || []), ...(movieData.audio || [])])];
       if (mergedAudio.length) metaUpdate.audio = mergedAudio;
 
-      existingMovie.set({ ...metaUpdate, links: finalLinks });
+      existingMovie.set({ ...metaUpdate, links: finalLinks, updatedAt: new Date() });
       await existingMovie.save();
 
       console.log(`[ManualParser] MERGED (${updateMode}): ${existingMovie.title} | +${appended} added, ${replaced} replaced, ${duplicatesSkipped} skipped`);
