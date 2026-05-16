@@ -13,9 +13,12 @@
 const QUALITY_RE = /\b(4K|2160p|1080p|720p|480p|360p|BluRay|BDRip|WEB-DL|WEBRip|HDCAM|HDTS|CAM|DVDRip|HDTV)\b/i;
 const SIZE_RE    = /\b(\d+(?:\.\d+)?)\s*(GB|MB|TB)\b/i;
 const YEAR_RE    = /\b(19|20)\d{2}\b/;
-const SE_RE      = /[Ss](\d{1,2})[Ee](\d{1,3})/;
-const S_ONLY_RE  = /(?:Season|S)[\s._-]*(\d{1,2})\b/i;
-const E_ONLY_RE  = /(?:Episode|Ep?|E)[\s._-]*(\d{1,3})\b/i;
+// S01E01 or S1E1 — must have both S and E parts together
+const SE_RE      = /\bS(\d{1,2})E(\d{1,3})\b/i;
+// Season-only: must say "Season N" or "SNN" (S followed by digits, word boundary, not part of a word)
+const S_ONLY_RE  = /(?:Season\s*(\d{1,2})\b|\bS(\d{1,2})\b(?![\d\w]))/i;
+// Episode-only: "Episode N", "Ep N", "EpN", or bare "E1"/"E01" — never "English", "E-AC3", "7.1" etc.
+const E_ONLY_RE  = /\b(?:Episode|Ep?)[\s._-]*(\d{1,3})\b|\bE(\d{1,3})\b(?![\w.-])/i;
 const URL_RE     = /https?:\/\/[^\s<>"']+/gi;
 
 const isUrlLine = (l) => /https?:\/\//i.test(l);
@@ -42,7 +45,11 @@ const extractSeasonEpisode = (text) => {
   if (combo) return { season: parseInt(combo[1], 10), episode: parseInt(combo[2], 10) };
   const s = text.match(S_ONLY_RE);
   const e = text.match(E_ONLY_RE);
-  return { season: s ? parseInt(s[1], 10) : null, episode: e ? parseInt(e[1], 10) : null };
+  // S_ONLY_RE has two capture groups: group 1 = "Season N", group 2 = bare "SNN"
+  const seasonNum = s ? parseInt(s[1] || s[2], 10) : null;
+  // E_ONLY_RE group 1 = "Episode/Ep N", group 2 = bare "E1"
+  const episodeNum = e ? parseInt(e[1] || e[2], 10) : null;
+  return { season: seasonNum, episode: episodeNum };
 };
 
 const buildLabel = (season, episode) => {
@@ -167,10 +174,17 @@ export const parseManualMessage = (text) => {
       const urls = [...line.matchAll(URL_RE)].map(m => ensureAbsoluteUrl(m[0]));
 
       for (const url of urls) {
-        const seSource          = currentContext || url;
-        const { season, episode } = extractSeasonEpisode(seSource);
-        const quality           = extractQuality(currentContext) || extractQuality(url);
-        const size              = extractSize(currentContext);
+        // Prefer currentContext (filename line), but never let a stale annotation
+        // from a previous season block poison a new episode's SE extraction.
+        // Re-extract SE from both filename and context separately, pick the best.
+        const ctxSE  = extractSeasonEpisode(currentContext);
+        const fileSE = extractSeasonEpisode(currentFilename);
+
+        // If the filename has its own SE, it always wins over a stale context
+        const { season, episode } = (fileSE.season || fileSE.episode) ? fileSE : ctxSE;
+
+        const quality = extractQuality(currentContext) || extractQuality(url);
+        const size    = extractSize(currentContext);
 
         links.push({
           label:    buildLabel(season, episode),
@@ -186,7 +200,8 @@ export const parseManualMessage = (text) => {
       currentFilename = line;
       currentContext  = line;
     } else if (QUALITY_RE.test(line) || SE_RE.test(line) || S_ONLY_RE.test(line)) {
-      // Annotation line with useful signals (e.g. "Season 1 Complete")
+      // Annotation line (e.g. "Season 1 Complete", "Season 2 Episode wise")
+      // Reset filename so the next URL doesn't inherit a stale episode from a previous block
       currentFilename = line;
       currentContext  = line;
     }

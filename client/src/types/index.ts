@@ -6,6 +6,9 @@ export type Link = {
   season?: number | null;
   episode?: number | null;
   filename?: string;
+  source?: string | null;
+  priority?: 'primary' | 'backup';
+  health?: 'working' | 'broken' | 'unverified';
 };
 
 export type Cast = {
@@ -35,6 +38,7 @@ export type Movie = {
   cast?: Cast[];
   telegramMsgId: number;
   addedAt: string;
+  updatedAt: string;
 };
 
 export type MovieResponse = {

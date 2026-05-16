@@ -127,10 +127,10 @@ export const movieApi = {
    * Saves manually-parsed (and optionally edited) movie data to the database.
    * Merges with existing entries if same tmdbId or title+year is found.
    */
-  saveManual: async (movieData: any, password: string) => {
-    const response = await api.post('/movies/admin/save-manual', { movieData }, {
+  saveManual: async (movieData: any, password: string, targetId?: string, updateMode?: 'append' | 'replace') => {
+    const response = await api.post('/movies/admin/save-manual', { movieData, targetId, updateMode }, {
       headers: { 'x-admin-password': password },
     });
-    return response.data as { success: boolean; action: string; movie: any };
+    return response.data as { success: boolean; action: string; movie: any; appended?: number; replaced?: number; duplicatesSkipped?: number };
   },
 };

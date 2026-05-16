@@ -18,6 +18,7 @@ export default function HomePage() {
   const [movies, setMovies] = useState<Movie[]>([]);
   const [loading, setLoading] = useState(true);
   const [totalPages, setTotalPages] = useState(1);
+  const [totalCount, setTotalCount] = useState(0);
   const [searchParams, setSearchParams] = useSearchParams();
 
   const currentPage = Number(searchParams.get("page") || "1");
@@ -37,6 +38,7 @@ export default function HomePage() {
       });
       setMovies(data.movies);
       setTotalPages(data.totalPages);
+      setTotalCount((data as any).total ?? data.movies.length);
     } catch (error) {
       console.error(error);
     } finally {
@@ -162,7 +164,7 @@ export default function HomePage() {
                 value: "text-xs font-semibold text-white/70",
               }}
             >
-              <SelectItem key="addedAt">Date Added</SelectItem>
+              <SelectItem key="addedAt">Recently Updated</SelectItem>
               <SelectItem key="year">Release Year</SelectItem>
               <SelectItem key="rating">Top Rated</SelectItem>
               <SelectItem key="title">A - Z</SelectItem>
@@ -182,6 +184,16 @@ export default function HomePage() {
             )}
           </div>
         </div>
+
+        {searchQuery && !loading && (
+          <div className="flex items-center gap-3 mb-6 -mt-4">
+            <Search className="w-4 h-4 text-brand shrink-0" />
+            <p className="text-sm text-white/50">
+              <span className="text-white font-semibold">{totalCount}</span> result{totalCount !== 1 ? 's' : ''} for{' '}
+              <span className="text-brand font-semibold">"{searchQuery}"</span>
+            </p>
+          </div>
+        )}
 
         {loading ? (
           <div className="flex flex-col items-center justify-center py-40 gap-6">
