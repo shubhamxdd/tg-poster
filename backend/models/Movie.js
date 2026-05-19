@@ -28,6 +28,7 @@ const movieSchema = new mongoose.Schema({
     source:   { type: String, default: null },  // e.g. "GDFlix", "Pixeldrain", "Telegram"
     priority: { type: String, enum: ['primary', 'backup'], default: 'primary' },
     health:   { type: String, enum: ['working', 'broken', 'unverified'], default: 'unverified' },
+    linkType: { type: String, enum: ['zip', 'package', 'episode', null], default: null },
   }],
   poster: {
     type: String,
@@ -94,8 +95,6 @@ const movieSchema = new mongoose.Schema({
     }
   }
 });
-
-movieSchema.index({ updatedAt: -1 });
 
 const Movie = mongoose.model('Movie', movieSchema);
 

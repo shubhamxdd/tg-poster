@@ -41,6 +41,9 @@ export default function AdminPage() {
   const [bulkRunning, setBulkRunning] = useState(false);
   const [bulkLog, setBulkLog] = useState<{ title: string; status: string }[]>([]);
   const [bulkSummary, setBulkSummary] = useState<{ updated: number; failed: number; total: number } | null>(null);
+  const [fixRunning, setFixRunning] = useState(false);
+  const [fixLog, setFixLog] = useState<{ title: string; action: string }[]>([]);
+  const [fixSummary, setFixSummary] = useState<{ updated: number; skipped: number; total: number } | null>(null);
   const { isOpen, onOpen, onOpenChange } = useDisclosure();
 
   const [activeTab, setActiveTab] = useState<"library" | "manual-parser">("library");
@@ -59,6 +62,8 @@ export default function AdminPage() {
   const [showMergeModal, setShowMergeModal] = useState(false);
   const [mergeTarget, setMergeTarget] = useState<Movie | null>(null);
   const [saveResult, setSaveResult] = useState<{ appended?: number; replaced?: number; duplicatesSkipped?: number } | null>(null);
+  // linkTypeMap: key = season number (or "all"), value = linkType chosen by admin
+  const [linkTypeMap, setLinkTypeMap] = useState<Record<string, 'zip' | 'package' | 'episode'>>({});
   const [parserConfidence, setParserConfidence] = useState<"High" | "Medium" | "Low">("High");
   const [tmdbCandidates, setTmdbCandidates] = useState<any[]>([]);
   const [tmdbPickerOpen, setTmdbPickerOpen] = useState(false);
@@ -181,7 +186,27 @@ export default function AdminPage() {
     }
   };
 
-  const handleUpdate = async () => {
+  const handleFixLinkTypes = async () => {
+    if (!window.confirm("This will scan all series/anime entries and stamp linkType (zip or package) on any links missing it. Episode-wise links are never touched. Continue?")) return;
+    setFixRunning(true);
+    setFixLog([]);
+    setFixSummary(null);
+    try {
+      await movieApi.fixLinkTypes(password, (line) => {
+        if (line.type === "progress") {
+          setFixLog(prev => [...prev, { title: line.title, action: line.action }]);
+        } else if (line.type === "done") {
+          setFixSummary({ updated: line.updated, skipped: line.skipped, total: line.total });
+        }
+      });
+    } catch (e: any) {
+      alert("Fix link types failed: " + e.message);
+    } finally {
+      setFixRunning(false);
+    }
+  };
+
+  const handleSave = async () => {
     if (!selectedMovie) return;
     try {
       await movieApi.updateMovie(selectedMovie._id, selectedMovie, password);
@@ -269,12 +294,39 @@ export default function AdminPage() {
     });
   };
 
+  const autoDetectLinkTypes = () => {
+    if (!manualPreview?.links) return;
+    const newMap: Record<string, 'zip' | 'package' | 'episode'> = { ...linkTypeMap };
+
+    (manualPreview.links as any[]).forEach((link: any) => {
+      const seasonKey = link.season != null ? String(link.season) : 'all';
+      const filename  = (link.filename || '').toLowerCase();
+      const url       = (link.url || '').toLowerCase();
+
+      // Never touch episode-wise links — if it has an episode number, skip
+      if (link.episode != null) return;
+
+      // Already set by admin — don't overwrite
+      if (newMap[seasonKey] === 'episode') return;
+
+      if (/\.zip\b/.test(filename) || /\.zip\b/.test(url)) {
+        newMap[seasonKey] = 'zip';
+      } else {
+        // No zip, no episode → package
+        newMap[seasonKey] = 'package';
+      }
+    });
+
+    setLinkTypeMap(newMap);
+  };
+
   const handleManualParse = async () => {
     if (!manualText.trim()) return;
     setManualParsing(true);
     setManualPreview(null);
     setManualSaved(false);
     setSaveResult(null);
+    setLinkTypeMap({});
     setExistingMatches([]);
     setSelectedMergeId(null);
     setUpdateMode(null);
@@ -337,16 +389,17 @@ export default function AdminPage() {
     if (!manualPreview) return;
     setManualSaving(true);
     try {
+      // Apply linkType from linkTypeMap to each link based on season
+      const linksWithType = (manualPreview.links || []).map((link: any) => {
+        const seasonKey = link.season != null ? String(link.season) : 'all';
+        const lt = linkTypeMap[seasonKey] || linkTypeMap['all'] || null;
+        return { ...link, linkType: lt };
+      });
+      const dataToSave = { ...manualPreview, links: linksWithType, rawMessage: manualText };
       if (selectedMergeId && selectedMergeId !== "NEW") {
-        // Use saveManual with targetId — backend handles safe append (no quality replacement)
-        await movieApi.saveManual(
-          { ...manualPreview, rawMessage: manualText },
-          password,
-          selectedMergeId,
-          "append"
-        );
+        await movieApi.saveManual(dataToSave, password, selectedMergeId, "append");
       } else {
-        await movieApi.saveManual({ ...manualPreview, rawMessage: manualText }, password);
+        await movieApi.saveManual(dataToSave, password);
       }
 
       setManualSaved(true);
@@ -453,9 +506,36 @@ export default function AdminPage() {
     <Button variant="flat" isLoading={bulkRunning} onPress={handleBulkUpdate} startContent={!bulkRunning && <RefreshCw className="w-4 h-4" />} className="text-white/40 hover:text-brand border border-white/10 bg-white/5 text-xs">
     {bulkRunning ? "Updating…" : "Bulk Fix Descriptions"}
     </Button>
+    <Button variant="flat" isLoading={fixRunning} onPress={handleFixLinkTypes} startContent={!fixRunning && <span className="text-sm">🔧</span>} className="text-white/40 hover:text-brand border border-white/10 bg-white/5 text-xs">
+    {fixRunning ? "Fixing…" : "Fix Link Types"}
+    </Button>
     <Button variant="flat" onPress={() => { localStorage.removeItem("admin_pass"); setIsLoggedIn(false); }} className="text-white/40 hover:text-red-400">Logout</Button>
     </div>
     </div>
+
+    {/* Fix Link Types progress log */}
+    {(fixRunning || fixSummary) && (
+      <div className="mb-6 p-4 rounded-xl bg-white/5 border border-white/10 space-y-2">
+      <div className="flex items-center justify-between">
+      <p className="text-xs font-bold uppercase tracking-widest text-white/50">Fix Link Types — Progress</p>
+      {fixSummary && (
+        <span className="text-xs text-green-400 font-bold">
+        ✓ Done — {fixSummary.updated} updated, {fixSummary.skipped} skipped of {fixSummary.total} series/anime
+        </span>
+      )}
+      </div>
+      {fixLog.length > 0 && (
+        <div className="max-h-40 overflow-y-auto space-y-1 font-mono text-[11px]">
+        {fixLog.slice(-50).map((entry, i) => (
+          <div key={i} className="flex items-center gap-2 text-white/40">
+          <span className="text-green-400">✓</span>
+          <span className="truncate">{entry.title}</span>
+          </div>
+        ))}
+        </div>
+      )}
+      </div>
+    )}
 
     <div className="flex gap-2 mb-8 p-1 bg-white/5 border border-white/10 rounded-xl w-fit">
     <button onClick={() => setActiveTab("library")} className={`flex items-center gap-2 px-5 py-2 rounded-lg text-sm font-bold transition-all ${activeTab === "library" ? "bg-brand text-white shadow" : "text-white/40 hover:text-white/70"}`}>
@@ -501,7 +581,7 @@ export default function AdminPage() {
         <TableColumn>YEAR</TableColumn>
         <TableColumn>TYPE</TableColumn>
         <TableColumn>LINKS</TableColumn>
-        <TableColumn>UPDATED</TableColumn>
+        <TableColumn>ADDED ON</TableColumn>
         <TableColumn align="center">ACTIONS</TableColumn>
         </TableHeader>
         <TableBody loadingContent={<div>loading...</div>} isLoading={loading}>
@@ -516,7 +596,7 @@ export default function AdminPage() {
           <TableCell>{movie.year}</TableCell>
           <TableCell><span className="text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded bg-white/10">{movie.type}</span></TableCell>
           <TableCell>{movie.links?.length || 0} Links</TableCell>
-          <TableCell className="text-white/30 text-xs" title={`Added: ${new Date(movie.addedAt).toLocaleDateString()}`}>{new Date(movie.updatedAt || movie.addedAt).toLocaleDateString()}</TableCell>
+          <TableCell className="text-white/30 text-xs">{new Date(movie.addedAt).toLocaleDateString()}</TableCell>
           <TableCell>
           <div className="flex gap-2 justify-center">
           <Button isIconOnly variant="flat" size="sm" onPress={() => handleEdit(movie)} className="bg-white/5 hover:bg-blue-500/20 text-blue-400"><Edit className="w-4 h-4" /></Button>
@@ -680,6 +760,63 @@ export default function AdminPage() {
         )}
         </div>
 
+        {/* ── Link Type Selector (series/anime only) ──────────────────────── */}
+        {(manualPreview.type === 'series' || manualPreview.type === 'anime') && (() => {
+          // Group links by season to show one selector per season block
+          const seasonKeys: string[] = [];
+          const seenSeasons = new Set<string>();
+          (manualPreview.links || []).forEach((l: any) => {
+            const k = l.season != null ? String(l.season) : 'all';
+            if (!seenSeasons.has(k)) { seenSeasons.add(k); seasonKeys.push(k); }
+          });
+          return (
+            <div className="p-4 rounded-xl bg-white/5 border border-white/10 space-y-3">
+            <div className="flex items-center justify-between">
+            <p className="text-xs font-bold uppercase tracking-widest text-white/50">Link Type — Select for each season block</p>
+            <button
+              onClick={autoDetectLinkTypes}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold border border-brand/30 bg-brand/10 text-brand hover:bg-brand/20 transition-all"
+            >
+              ⚡ Auto-detect from filenames
+            </button>
+            </div>
+            <div className="grid gap-3">
+            {seasonKeys.map(sk => {
+              const label = sk === 'all' ? 'All Links' : `Season ${sk}`;
+              const current = linkTypeMap[sk] || null;
+              const opts: { key: 'zip' | 'package' | 'episode'; label: string; icon: string }[] = [
+                { key: 'zip',     label: 'Zip',          icon: '🗜️' },
+                { key: 'package', label: 'Package',      icon: '📦' },
+                { key: 'episode', label: 'Episode Wise', icon: '🎬' },
+              ];
+              return (
+                <div key={sk} className="flex items-center gap-3 flex-wrap">
+                <span className="text-xs text-white/40 w-20 shrink-0 font-bold">{label}</span>
+                <div className="flex gap-2 flex-wrap">
+                {opts.map(opt => (
+                  <button
+                    key={opt.key}
+                    onClick={() => setLinkTypeMap(prev => {
+                      const next = { ...prev };
+                      if (next[sk] === opt.key) { delete next[sk]; } else { next[sk] = opt.key; }
+                      return next;
+                    })}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold border transition-all
+                      ${current === opt.key
+                        ? 'bg-brand/20 border-brand text-brand'
+                        : 'bg-white/5 border-white/10 text-white/40 hover:border-white/30 hover:text-white/70'}`}
+                  >
+                  {opt.icon} {opt.label}
+                  </button>
+                ))}
+                </div>
+                </div>
+              );
+            })}
+            </div>
+            </div>
+          );
+        })()}
         <div className="flex items-center gap-4 p-4 rounded-xl bg-white/5 border border-white/10">
         {manualPreview.poster && <img src={manualPreview.poster} alt="" className="w-12 h-16 object-cover rounded-lg border border-white/10 shrink-0" />}
         <div className="flex-1 min-w-0">

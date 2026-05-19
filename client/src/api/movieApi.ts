@@ -127,6 +127,29 @@ export const movieApi = {
    * Saves manually-parsed (and optionally edited) movie data to the database.
    * Merges with existing entries if same tmdbId or title+year is found.
    */
+  fixLinkTypes: async (password: string, onProgress: (msg: any) => void): Promise<void> => {
+    const response = await fetch('/api/movies/admin/fix-link-types', {
+      method: 'POST',
+      headers: { 'x-admin-password': password, 'Content-Type': 'application/json' },
+    });
+    if (!response.body) throw new Error('No response body');
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop() || '';
+      for (const line of lines) {
+        if (line.trim()) {
+          try { onProgress(JSON.parse(line)); } catch {}
+        }
+      }
+    }
+  },
+
   saveManual: async (movieData: any, password: string, targetId?: string, updateMode?: 'append' | 'replace') => {
     const response = await api.post('/movies/admin/save-manual', { movieData, targetId, updateMode }, {
       headers: { 'x-admin-password': password },

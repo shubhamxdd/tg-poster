@@ -332,9 +332,10 @@ export default function MovieDetailPage() {
       <Tabs
       aria-label="Download seasons"
       classNames={{
-        tabList: "bg-white/3 border border-white/8 p-1 rounded-2xl gap-1",
+        base: "w-full",
+        tabList: "bg-white/3 border border-white/8 p-1 rounded-2xl gap-1 flex-nowrap overflow-x-auto scrollbar-hide w-full",
         cursor: "bg-brand shadow-lg shadow-brand/30 rounded-xl",
-        tab: "font-bold text-xs uppercase tracking-widest text-white/40 data-[selected=true]:text-white h-9 px-5",
+        tab: "font-bold text-xs uppercase tracking-widest text-white/40 data-[selected=true]:text-white h-9 px-5 shrink-0",
         panel: "pt-6",
       }}
       >
@@ -468,13 +469,25 @@ function SeasonContent({
   expandedEpisodes: Record<string, boolean>;
   onToggleEpisode: (key: string) => void;
 }) {
-  // Separate episode-keyed links from non-episode links
-  // Group by episode number — only episodes with >1 link get an expandable button
+  // Split links by explicit linkType, then handle untyped with episode logic
+  const zipLinks:     MovieLink[] = [];
+  const packageLinks: MovieLink[] = [];
+  const episodeLinks: MovieLink[] = [];
+  const untyped:      MovieLink[] = [];
+
+  for (const link of links) {
+    if      (link.linkType === 'zip')     zipLinks.push(link);
+    else if (link.linkType === 'package') packageLinks.push(link);
+    else if (link.linkType === 'episode') episodeLinks.push(link);
+    else                                  untyped.push(link);
+  }
+
+  // Build episode map from explicitly-episode-typed links + untyped links
+  const episodeSourceLinks = episodeLinks.length > 0 ? episodeLinks : untyped;
   const episodeMap = new Map<number, MovieLink[]>();
   const nonEpisodeLinks: MovieLink[] = [];
 
-  for (const link of links) {
-    // Use link.episode directly — apply only the OTT false-positive scrubs
+  for (const link of episodeSourceLinks) {
     let realEp = link.episode ?? null;
     if (realEp) {
       const fullStr = `${link.label || ''} ${link.filename || ''}`.toUpperCase();
@@ -482,49 +495,38 @@ function SeasonContent({
       if (epNum === 5 && fullStr.includes("ZEE5") && !/(?:EP|E|EPISODE|S\d+E)\s*0*5\b/i.test(fullStr)) realEp = null;
       if ((epNum === 264 || epNum === 265) && /H\.?26[45]|X26[45]/.test(fullStr) && !/(?:EP|E|EPISODE|S\d+E)\s*0*(264|265)\b/i.test(fullStr)) realEp = null;
     }
-    // A link is a package only if it has NO episode number at all
-    const isPackage = !realEp;
-
-    if (realEp && !isPackage) {
+    if (realEp) {
       if (!episodeMap.has(realEp)) episodeMap.set(realEp, []);
       episodeMap.get(realEp)!.push(link);
     } else {
       nonEpisodeLinks.push(link);
     }
   }
-
-  // Sort episode numbers
   const sortedEpisodes = Array.from(episodeMap.entries()).sort(([a], [b]) => a - b);
 
-  return (
-    <div className="space-y-3">
-    {/* Non-episode links (season packs, movie links, etc.) render flat as before */}
+  const SectionHeader = ({ title }: { title: string }) => (
+    <div className="flex items-center gap-3 pt-2 pb-1">
+    <div className="h-px flex-1 bg-white/8" />
+    <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-white/30 shrink-0">{title}</span>
+    <div className="h-px flex-1 bg-white/8" />
+    </div>
+  );
+
+  const EpisodeGroup = () => (
+    <>
     {nonEpisodeLinks.map((link, idx) => (
       <DownloadRow key={`non-ep-${idx}`} link={link} onDownload={onDownload} movieAudio={movieAudio} />
     ))}
-
-    {/* Episode groups */}
     {sortedEpisodes.map(([epNum, epLinks]) => {
       const groupKey = `${seasonName}-ep${epNum}`;
-
       if (epLinks.length === 1) {
-        // Single link for this episode — render flat, no expander needed
-        return (
-          <DownloadRow key={groupKey} link={epLinks[0]} onDownload={onDownload} movieAudio={movieAudio} />
-        );
+        return <DownloadRow key={groupKey} link={epLinks[0]} onDownload={onDownload} movieAudio={movieAudio} />;
       }
-
-      // Multiple quality links for this episode — show expandable button
       const isOpen = expandedEpisodes[groupKey] ?? false;
-      const qualities = epLinks.map(l => l.quality).filter(Boolean).join(" · ");
-
+      const qualities = epLinks.map(l => l.quality).filter(Boolean).join(" \u00b7 ");
       return (
         <div key={groupKey} className="rounded-2xl border border-white/8 overflow-hidden">
-        {/* Expandable header button */}
-        <button
-          onClick={() => onToggleEpisode(groupKey)}
-          className="w-full flex items-center justify-between gap-4 px-5 py-4 bg-[#111215] hover:bg-[#16181C] transition-colors group"
-        >
+        <button onClick={() => onToggleEpisode(groupKey)} className="w-full flex items-center justify-between gap-4 px-5 py-4 bg-[#111215] hover:bg-[#16181C] transition-colors group">
         <div className="flex items-center gap-3 min-w-0">
         <div className="w-10 h-10 rounded-xl bg-brand/10 border border-brand/20 flex items-center justify-center shrink-0 group-hover:bg-brand/20 transition-colors">
         <Download className="w-4 h-4 text-brand" />
@@ -533,9 +535,7 @@ function SeasonContent({
         <p className="font-bold text-sm text-white">Episode {epNum}</p>
         <div className="flex items-center gap-2 mt-1">
         <span className="text-[10px] text-white/30">{epLinks.length} qualities available</span>
-        {qualities && (
-          <span className="text-[10px] text-amber-400/60 font-mono">{qualities}</span>
-        )}
+        {qualities && <span className="text-[10px] text-amber-400/60 font-mono">{qualities}</span>}
         </div>
         </div>
         </div>
@@ -543,26 +543,47 @@ function SeasonContent({
         <span className="text-[10px] font-bold uppercase tracking-widest text-brand/60 bg-brand/10 border border-brand/20 px-2.5 py-1 rounded-lg">
         {isOpen ? "Collapse" : "Select Quality"}
         </span>
-        <ChevronDown
-          className={`w-4 h-4 text-white/30 transition-transform duration-200 ${isOpen ? "rotate-180" : ""}`}
-        />
+        <ChevronDown className={`w-4 h-4 text-white/30 transition-transform duration-200 ${isOpen ? "rotate-180" : ""}`} />
         </div>
         </button>
-
-        {/* Expanded links */}
         {isOpen && (
           <div className="border-t border-white/8 bg-[#0D0D0F] p-3 space-y-2">
-          {epLinks.map((link, idx) => (
-            <DownloadRow key={idx} link={link} onDownload={onDownload} movieAudio={movieAudio} />
-          ))}
+          {epLinks.map((link, idx) => <DownloadRow key={idx} link={link} onDownload={onDownload} movieAudio={movieAudio} />)}
           </div>
         )}
         </div>
       );
     })}
+    </>
+  );
+
+  const hasTyped = zipLinks.length > 0 || packageLinks.length > 0 || episodeLinks.length > 0;
+
+  return (
+    <div className="space-y-3">
+    {hasTyped ? (
+      <>
+      {zipLinks.length > 0 && (
+        <><SectionHeader title="Zip Downloads" /><div className="space-y-3">{zipLinks.map((l, i) => <DownloadRow key={i} link={l} onDownload={onDownload} movieAudio={movieAudio} />)}</div></>
+      )}
+      {packageLinks.length > 0 && (
+        <><SectionHeader title="Package Downloads" /><div className="space-y-3">{packageLinks.map((l, i) => <DownloadRow key={i} link={l} onDownload={onDownload} movieAudio={movieAudio} />)}</div></>
+      )}
+      {(episodeLinks.length > 0 || episodeMap.size > 0) && (
+        <><SectionHeader title="Episode Downloads" /><EpisodeGroup /></>
+      )}
+      {/* Untyped non-episode links (season packs from old data mixed with typed links) */}
+      {episodeLinks.length === 0 && nonEpisodeLinks.length > 0 && episodeMap.size === 0 && (
+        <div className="space-y-3">{nonEpisodeLinks.map((l, i) => <DownloadRow key={i} link={l} onDownload={onDownload} movieAudio={movieAudio} />)}</div>
+      )}
+      </>
+    ) : (
+      <EpisodeGroup />
+    )}
     </div>
   );
 }
+
 
 /* ── Sub-components ── */
 
