@@ -182,10 +182,9 @@ export const getMovies = async (req, res) => {
 
     // ── No search — standard sorted + paginated fetch ─────────────────────
     let sortQuery = { updatedAt: -1 };
-    if (sortBy === 'addedAt') sortQuery = { updatedAt: -1 };
-    if (sortBy === 'year')    sortQuery = { year: -1, updatedAt: -1 };
-    if (sortBy === 'rating')  sortQuery = { rating: -1, updatedAt: -1 };
-    if (sortBy === 'title')   sortQuery = { title: 1 };
+    if (sortBy === 'year')   sortQuery = { year: -1, updatedAt: -1 };
+    if (sortBy === 'rating') sortQuery = { rating: -1, updatedAt: -1 };
+    if (sortBy === 'title')  sortQuery = { title: 1 };
 
     const [movies, count] = await Promise.all([
       Movie.find(baseFilter).sort(sortQuery).skip((pageNum - 1) * limitNum).limit(limitNum).lean(),
@@ -458,7 +457,64 @@ export const parseManual = async (req, res) => {
 };
 
 /**
- * POST /api/movies/admin/save-manual
+ * POST /api/movies/admin/fix-link-types
+ * Scans all series/anime entries in DB and stamps linkType on links that don't have one.
+ * Rules (same as frontend auto-detect):
+ *   - link.episode != null  → skip (never touch episode-wise links)
+ *   - filename/url has .zip → linkType = 'zip'
+ *   - no .zip, no episode   → linkType = 'package'
+ * Streams progress as NDJSON.
+ */
+export const fixLinkTypes = async (req, res) => {
+  const entries = await Movie.find({
+    type: { $in: ['series', 'anime'] },
+    'links.0': { $exists: true },
+  }).select('_id title links').lean();
+
+  res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+  res.setHeader('Transfer-Encoding', 'chunked');
+  res.write(JSON.stringify({ type: 'start', total: entries.length }) + '\n');
+
+  let updated = 0;
+  let skipped = 0;
+
+  for (const entry of entries) {
+    let dirty = false;
+    const newLinks = entry.links.map(link => {
+      // Skip if already has a linkType set
+      if (link.linkType) return link;
+
+      const filename = (link.filename || '').toLowerCase();
+      const url      = (link.url      || '').toLowerCase();
+
+      let lt;
+      if (link.episode != null) {
+        lt = 'episode';
+      } else if (/\.zip\b/.test(filename) || /\.zip\b/.test(url)) {
+        lt = 'zip';
+      } else {
+        lt = 'package';
+      }
+
+      dirty = true;
+      return { ...link, linkType: lt };
+    });
+
+    if (dirty) {
+      await Movie.updateOne({ _id: entry._id }, { $set: { links: newLinks } });
+      updated++;
+      res.write(JSON.stringify({ type: 'progress', title: entry.title, action: 'updated' }) + '\n');
+    } else {
+      skipped++;
+    }
+  }
+
+  res.write(JSON.stringify({ type: 'done', updated, skipped, total: entries.length }) + '\n');
+  res.end();
+};
+
+
+/**
  * Body: { movieData, targetId?, updateMode? }
  *
  * updateMode:

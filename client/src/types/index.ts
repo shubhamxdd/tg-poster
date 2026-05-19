@@ -9,6 +9,7 @@ export type Link = {
   source?: string | null;
   priority?: 'primary' | 'backup';
   health?: 'working' | 'broken' | 'unverified';
+  linkType?: 'zip' | 'package' | 'episode' | null;
 };
 
 export type Cast = {
@@ -38,7 +39,6 @@ export type Movie = {
   cast?: Cast[];
   telegramMsgId: number;
   addedAt: string;
-  updatedAt: string;
 };
 
 export type MovieResponse = {
