@@ -9,6 +9,7 @@ router.get('/admin/tmdb-search', adminAuth, searchTmdbCandidates);
 router.get('/admin/tmdb-by-id', adminAuth, fetchTmdbById);
 router.post('/admin/bulk-update-descriptions', adminAuth, bulkUpdateDescriptions);
 router.post('/admin/parse-manual', adminAuth, parseManual);
+router.post('/admin/save-manual', adminAuth, saveManual);
 router.post('/admin/fix-link-types', adminAuth, fixLinkTypes);
 router.get('/:id', getMovieById);
 

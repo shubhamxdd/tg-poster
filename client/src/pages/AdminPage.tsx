@@ -206,7 +206,7 @@ export default function AdminPage() {
     }
   };
 
-  const handleSave = async () => {
+  const handleUpdate = async () => {
     if (!selectedMovie) return;
     try {
       await movieApi.updateMovie(selectedMovie._id, selectedMovie, password);
