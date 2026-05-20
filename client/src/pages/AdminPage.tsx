@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import React from "react";
 import { movieApi } from "@/api/movieApi";
 import type { Movie } from "@/types/index";
 import {
@@ -657,7 +658,12 @@ export default function AdminPage() {
 
         {/* ── TMDB Candidate Picker ───────────────────────────────────────── */}
         {tmdbPickerOpen && tmdbCandidates.length > 1 && (
-          <div className="p-4 rounded-xl bg-purple-500/10 border border-purple-500/30 space-y-3">
+          <div
+            className="p-4 rounded-xl bg-purple-500/10 border border-purple-500/30 space-y-3"
+            onPointerDown={(e) => e.stopPropagation()}
+            onTouchStart={(e) => e.stopPropagation()}
+            onTouchMove={(e) => e.stopPropagation()}
+          >
           <div className="flex items-center justify-between">
           <div className="flex items-center gap-2 text-purple-400">
           <Search className="w-4 h-4" />
@@ -666,12 +672,18 @@ export default function AdminPage() {
           <Button size="sm" variant="flat" className="text-white/40 text-xs border border-white/10" onPress={() => setTmdbPickerOpen(false)}>Keep Auto-selected</Button>
           </div>
           <p className="text-xs text-white/50">TMDB returned {tmdbCandidates.length} results for this title. The system auto-picked one, but you can override it here.</p>
-          <div className="grid gap-2 max-h-72 overflow-y-auto pr-1">
+          <div
+            className="grid gap-2 max-h-72 overflow-y-auto pr-1"
+            onScroll={(e) => e.stopPropagation()}
+            onTouchStart={(e) => e.stopPropagation()}
+            onTouchMove={(e) => { e.stopPropagation(); }}
+            style={{ overscrollBehavior: "contain", WebkitOverflowScrolling: "touch" } as React.CSSProperties}
+          >
           {tmdbCandidates.map((c) => (
             <button
               key={c.tmdbId}
               disabled={tmdbPickerLoading}
-              onPointerDown={(e) => { e.preventDefault(); if (!tmdbPickerLoading) handleTmdbCandidatePick(c); }}
+              onPointerDown={(e) => { e.preventDefault(); e.stopPropagation(); if (!tmdbPickerLoading) handleTmdbCandidatePick(c); }}
               className={`flex items-center gap-3 p-3 rounded-lg border text-left transition-all cursor-pointer
                 ${manualPreview?.tmdbId === c.tmdbId
                   ? "bg-purple-500/20 border-purple-500/60 ring-1 ring-purple-400"
