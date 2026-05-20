@@ -58,9 +58,6 @@ export default function AdminPage() {
 
   const [existingMatches, setExistingMatches] = useState<Movie[]>([]);
   const [selectedMergeId, setSelectedMergeId] = useState<string | "NEW" | null>(null);
-  const [updateMode, setUpdateMode] = useState<"append" | "replace" | null>(null);
-  const [showMergeModal, setShowMergeModal] = useState(false);
-  const [mergeTarget, setMergeTarget] = useState<Movie | null>(null);
   const [saveResult, setSaveResult] = useState<{ appended?: number; replaced?: number; duplicatesSkipped?: number } | null>(null);
   // linkTypeMap: key = season number (or "all"), value = linkType chosen by admin
   const [linkTypeMap, setLinkTypeMap] = useState<Record<string, 'zip' | 'package' | 'episode'>>({});
@@ -115,7 +112,7 @@ export default function AdminPage() {
       fetchMovies(password, searchQuery);
     }, 400);
     return () => clearTimeout(timer);
-  }, [searchQuery]);
+  }, [searchQuery, isLoggedIn]);
 
   const handleDelete = async (id: string) => {
     if (!window.confirm("Are you sure you want to delete this movie?")) return;
@@ -151,7 +148,6 @@ export default function AdminPage() {
                        ...(data.country    && { country:    data.country }),
                        ...(data.director   && { director:   data.director }),
                        ...(data.year       && { year:       data.year }),
-                       ...(data.audio      && { audio:      data.audio }),
                        ...(data.audio?.length && { audio: data.audio }),
                        ...(data.description && { description: data.description }),
                        ...(data.genre?.length && { genre:  data.genre }),
@@ -212,8 +208,8 @@ export default function AdminPage() {
       await movieApi.updateMovie(selectedMovie._id, selectedMovie, password);
       setMovies(movies.map(m => m._id === selectedMovie._id ? selectedMovie : m));
       onOpenChange();
-    } catch (error) {
-      alert("Update failed");
+    } catch (error: any) {
+      alert(error.response?.data?.message || "Update failed");
     }
   };
 
@@ -225,14 +221,14 @@ export default function AdminPage() {
 
   const removeLink = (index: number) => {
     if (!selectedMovie) return;
-    const newLinks = [...selectedMovie.links];
+    const newLinks = [...(selectedMovie.links || [])];
     newLinks.splice(index, 1);
     setSelectedMovie({ ...selectedMovie, links: newLinks });
   };
 
   const updateLink = (index: number, field: string, value: any) => {
     if (!selectedMovie) return;
-    const newLinks = [...selectedMovie.links];
+    const newLinks = [...(selectedMovie.links || [])];
     newLinks[index] = { ...newLinks[index], [field]: value };
     setSelectedMovie({ ...selectedMovie, links: newLinks });
   };
@@ -296,25 +292,29 @@ export default function AdminPage() {
 
   const autoDetectLinkTypes = () => {
     if (!manualPreview?.links) return;
-    const newMap: Record<string, 'zip' | 'package' | 'episode'> = { ...linkTypeMap };
+    const newMap: Record<string, 'zip' | 'package' | 'episode'> = {};
 
+    // Group links by season first, then decide per group
+    const bySeasonKey: Record<string, any[]> = {};
     (manualPreview.links as any[]).forEach((link: any) => {
       const seasonKey = link.season != null ? String(link.season) : 'all';
-      const filename  = (link.filename || '').toLowerCase();
-      const url       = (link.url || '').toLowerCase();
+      if (!bySeasonKey[seasonKey]) bySeasonKey[seasonKey] = [];
+      bySeasonKey[seasonKey].push(link);
+    });
 
-      // Never touch episode-wise links — if it has an episode number, skip
-      if (link.episode != null) return;
-
-      // Already set by admin — don't overwrite
-      if (newMap[seasonKey] === 'episode') return;
-
-      if (/\.zip\b/.test(filename) || /\.zip\b/.test(url)) {
-        newMap[seasonKey] = 'zip';
-      } else {
-        // No zip, no episode → package
-        newMap[seasonKey] = 'package';
+    Object.entries(bySeasonKey).forEach(([seasonKey, links]) => {
+      // If any link has an episode number → episode-wise
+      const hasEpisode = links.some((l: any) => l.episode != null);
+      if (hasEpisode) {
+        newMap[seasonKey] = 'episode';
+        return;
       }
+      // If any filename/url contains .zip → zip
+      const hasZip = links.some((l: any) =>
+        /\.zip\b/.test((l.filename || '').toLowerCase()) ||
+        /\.zip\b/.test((l.url || '').toLowerCase())
+      );
+      newMap[seasonKey] = hasZip ? 'zip' : 'package';
     });
 
     setLinkTypeMap(newMap);
@@ -329,9 +329,6 @@ export default function AdminPage() {
     setLinkTypeMap({});
     setExistingMatches([]);
     setSelectedMergeId(null);
-    setUpdateMode(null);
-    setMergeTarget(null);
-    setShowMergeModal(false);
     setTmdbCandidates([]);
     setTmdbPickerOpen(false);
 
@@ -538,10 +535,10 @@ export default function AdminPage() {
     )}
 
     <div className="flex gap-2 mb-8 p-1 bg-white/5 border border-white/10 rounded-xl w-fit">
-    <button onClick={() => setActiveTab("library")} className={`flex items-center gap-2 px-5 py-2 rounded-lg text-sm font-bold transition-all ${activeTab === "library" ? "bg-brand text-white shadow" : "text-white/40 hover:text-white/70"}`}>
+    <button onPointerDown={() => setActiveTab("library")} className={`flex items-center gap-2 px-5 py-2 rounded-lg text-sm font-bold transition-all ${activeTab === "library" ? "bg-brand text-white shadow" : "text-white/40 hover:text-white/70"}`}>
     <LayoutDashboard className="w-4 h-4" /> Library
     </button>
-    <button onClick={() => setActiveTab("manual-parser")} className={`flex items-center gap-2 px-5 py-2 rounded-lg text-sm font-bold transition-all ${activeTab === "manual-parser" ? "bg-brand text-white shadow" : "text-white/40 hover:text-white/70"}`}>
+    <button onPointerDown={() => setActiveTab("manual-parser")} className={`flex items-center gap-2 px-5 py-2 rounded-lg text-sm font-bold transition-all ${activeTab === "manual-parser" ? "bg-brand text-white shadow" : "text-white/40 hover:text-white/70"}`}>
     <FileText className="w-4 h-4" /> Manual Parser
     </button>
     </div>
@@ -674,7 +671,7 @@ export default function AdminPage() {
             <button
               key={c.tmdbId}
               disabled={tmdbPickerLoading}
-              onClick={() => handleTmdbCandidatePick(c)}
+              onPointerDown={(e) => { e.preventDefault(); if (!tmdbPickerLoading) handleTmdbCandidatePick(c); }}
               className={`flex items-center gap-3 p-3 rounded-lg border text-left transition-all cursor-pointer
                 ${manualPreview?.tmdbId === c.tmdbId
                   ? "bg-purple-500/20 border-purple-500/60 ring-1 ring-purple-400"
@@ -769,12 +766,17 @@ export default function AdminPage() {
             const k = l.season != null ? String(l.season) : 'all';
             if (!seenSeasons.has(k)) { seenSeasons.add(k); seasonKeys.push(k); }
           });
+          const opts: { key: 'zip' | 'package' | 'episode'; label: string; icon: string }[] = [
+            { key: 'zip',     label: 'Zip',          icon: '🗜️' },
+            { key: 'package', label: 'Package',      icon: '📦' },
+            { key: 'episode', label: 'Episode Wise', icon: '🎬' },
+          ];
           return (
             <div className="p-4 rounded-xl bg-white/5 border border-white/10 space-y-3">
             <div className="flex items-center justify-between">
             <p className="text-xs font-bold uppercase tracking-widest text-white/50">Link Type — Select for each season block</p>
             <button
-              onClick={autoDetectLinkTypes}
+              onPointerDown={(e) => { e.preventDefault(); autoDetectLinkTypes(); }}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold border border-brand/30 bg-brand/10 text-brand hover:bg-brand/20 transition-all"
             >
               ⚡ Auto-detect from filenames
@@ -783,32 +785,33 @@ export default function AdminPage() {
             <div className="grid gap-3">
             {seasonKeys.map(sk => {
               const label = sk === 'all' ? 'All Links' : `Season ${sk}`;
-              const current = linkTypeMap[sk] || null;
-              const opts: { key: 'zip' | 'package' | 'episode'; label: string; icon: string }[] = [
-                { key: 'zip',     label: 'Zip',          icon: '🗜️' },
-                { key: 'package', label: 'Package',      icon: '📦' },
-                { key: 'episode', label: 'Episode Wise', icon: '🎬' },
-              ];
               return (
                 <div key={sk} className="flex items-center gap-3 flex-wrap">
                 <span className="text-xs text-white/40 w-20 shrink-0 font-bold">{label}</span>
                 <div className="flex gap-2 flex-wrap">
-                {opts.map(opt => (
-                  <button
-                    key={opt.key}
-                    onClick={() => setLinkTypeMap(prev => {
-                      const next = { ...prev };
-                      if (next[sk] === opt.key) { delete next[sk]; } else { next[sk] = opt.key; }
-                      return next;
-                    })}
-                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold border transition-all
-                      ${current === opt.key
-                        ? 'bg-brand/20 border-brand text-brand'
-                        : 'bg-white/5 border-white/10 text-white/40 hover:border-white/30 hover:text-white/70'}`}
-                  >
-                  {opt.icon} {opt.label}
-                  </button>
-                ))}
+                {opts.map(opt => {
+                  const isActive = linkTypeMap[sk] === opt.key;
+                  return (
+                    <button
+                      key={opt.key}
+                      type="button"
+                      onPointerDown={(e) => {
+                        e.preventDefault();
+                        setLinkTypeMap(prev => {
+                          const next = { ...prev };
+                          if (next[sk] === opt.key) { delete next[sk]; } else { next[sk] = opt.key; }
+                          return next;
+                        });
+                      }}
+                      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold border transition-all
+                        ${isActive
+                          ? 'bg-brand/20 border-brand text-brand'
+                          : 'bg-white/5 border-white/10 text-white/40 hover:border-white/30 hover:text-white/70'}`}
+                    >
+                    {opt.icon} {opt.label}
+                    </button>
+                  );
+                })}
                 </div>
                 </div>
               );
@@ -840,7 +843,7 @@ export default function AdminPage() {
           <Input label="Title" variant="bordered" size="sm" value={manualPreview.title || ""} onValueChange={(v) => setManualPreview({ ...manualPreview, title: v })} />
           <Input label="Original Title" variant="bordered" size="sm" value={manualPreview.originalTitle || ""} onValueChange={(v) => setManualPreview({ ...manualPreview, originalTitle: v })} />
           <div className="grid grid-cols-2 gap-3">
-          <Input label="Year" variant="bordered" size="sm" type="number" value={String(manualPreview.year || "")} onValueChange={(v) => setManualPreview({ ...manualPreview, year: Number(v) })} />
+          <Input label="Year" variant="bordered" size="sm" type="number" value={String(manualPreview.year || "")} onValueChange={(v) => setManualPreview({ ...manualPreview, year: v ? Number(v) : null })} />
           <Select label="Type" variant="bordered" size="sm" selectedKeys={[manualPreview.type || "movie"]} onSelectionChange={(keys) => setManualPreview({ ...manualPreview, type: Array.from(keys)[0] as string })}>
           <SelectItem key="movie">Movie</SelectItem>
           <SelectItem key="series">Series</SelectItem>
@@ -874,6 +877,12 @@ export default function AdminPage() {
             <div className="flex gap-2 items-center mb-1">
             {link.label?.startsWith("Season") ? <Chip size="sm" color="primary" variant="flat">Package Label</Chip> : link.label?.match(/S\d+E\d+/) ? <Chip size="sm" color="secondary" variant="flat">Episode Label</Chip> : null}
             </div>
+            {link.filename && (
+              <div className="flex items-start gap-2 px-2 py-1.5 rounded-lg bg-white/[0.04] border border-white/10">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-white/30 shrink-0 mt-0.5">File</span>
+              <span className="text-[11px] text-white/50 font-mono break-all leading-relaxed">{link.filename}</span>
+              </div>
+            )}
             <Input label="Label" size="sm" variant="underlined" value={link.label || ""} onValueChange={(v) => updateManualLink(idx, "label", v)} />
             <Input label="URL" size="sm" variant="underlined" value={link.url || ""} onValueChange={(v) => updateManualLink(idx, "url", v)} startContent={<ExternalLink className="w-3 h-3 text-white/20" />} />
             <div className="grid grid-cols-2 gap-2">
@@ -882,6 +891,7 @@ export default function AdminPage() {
             </div>
             <div className="grid grid-cols-2 gap-2">
             <Input label="Season" size="sm" variant="underlined" type="number" value={String(link.season || "")} onValueChange={(v) => updateManualLink(idx, "season", v ? Number(v) : null)} />
+            <Input label="Filename" size="sm" variant="underlined" value={link.filename || ""} onValueChange={(v) => updateManualLink(idx, "filename", v)} />
             </div>
             </div>
           ))}
@@ -893,10 +903,15 @@ export default function AdminPage() {
         {!manualEditMode && manualPreview.links?.length > 0 && (
           <div className="space-y-2">
           {manualPreview.links.map((link: any, idx: number) => (
-            <div key={idx} className="flex items-center gap-3 px-4 py-3 rounded-xl bg-white/5 border border-white/5">
+            <div key={idx} className="flex flex-col gap-1 px-4 py-3 rounded-xl bg-white/5 border border-white/5">
+            <div className="flex items-center gap-3">
             <span className={`text-xs font-bold px-2 py-0.5 rounded shrink-0 ${link.label?.startsWith("Season") ? "bg-blue-500/20 text-blue-400" : "bg-purple-500/20 text-purple-400"}`}>{link.label || "Link"}</span>
             <span className="text-xs text-white/50 truncate flex-1">{link.url}</span>
             {link.quality && <span className="text-xs text-white/30 shrink-0">{link.quality}</span>}
+            </div>
+            {link.filename && (
+              <span className="text-[11px] text-white/25 font-mono truncate pl-1">{link.filename}</span>
+            )}
             </div>
           ))}
           </div>
@@ -927,7 +942,7 @@ export default function AdminPage() {
         <Input label="Title" variant="bordered" value={selectedMovie.title} onValueChange={(v) => setSelectedMovie({...selectedMovie, title: v})} />
         <Input label="Original Title" variant="bordered" placeholder="e.g. 呪術廻戦 or Parasite Korean title" value={selectedMovie.originalTitle || ""} onValueChange={(v) => setSelectedMovie({...selectedMovie, originalTitle: v})} />
         <div className="grid grid-cols-2 gap-4">
-        <Input label="Year" type="number" variant="bordered" value={String(selectedMovie.year || "")} onValueChange={(v) => setSelectedMovie({...selectedMovie, year: Number(v)})} />
+        <Input label="Year" type="number" variant="bordered" value={String(selectedMovie.year || "")} onValueChange={(v) => setSelectedMovie({...selectedMovie, year: v ? Number(v) : null})} />
         <Select label="Type" variant="bordered" selectedKeys={[selectedMovie.type]} onSelectionChange={(keys) => setSelectedMovie({...selectedMovie, type: Array.from(keys)[0] as any})}>
         <SelectItem key="movie">Movie</SelectItem>
         <SelectItem key="series">Series</SelectItem>
@@ -974,11 +989,21 @@ export default function AdminPage() {
         {selectedMovie.links.map((link, idx) => (
           <div key={idx} className="p-3 bg-white/5 rounded-xl border border-white/10 space-y-3 relative">
           <Button isIconOnly size="sm" variant="light" className="absolute top-2 right-2 text-white/20 hover:text-red-400" onPress={() => removeLink(idx)}><X className="w-3 h-3"/></Button>
+          {link.filename && (
+            <div className="flex items-start gap-2 px-2 py-1.5 rounded-lg bg-white/[0.04] border border-white/10">
+            <span className="text-[10px] font-bold uppercase tracking-wider text-white/30 shrink-0 mt-0.5">File</span>
+            <span className="text-[11px] text-white/50 font-mono break-all leading-relaxed">{link.filename}</span>
+            </div>
+          )}
           <Input label="Label" size="sm" variant="underlined" value={link.label} onValueChange={(v) => updateLink(idx, "label", v)} />
           <Input label="URL" size="sm" variant="underlined" value={link.url} onValueChange={(v) => updateLink(idx, "url", v)} startContent={<ExternalLink className="w-3 h-3 text-white/20" />} />
           <div className="grid grid-cols-2 gap-3">
           <Input label="Quality" size="sm" variant="underlined" value={link.quality || ""} onValueChange={(v) => updateLink(idx, "quality", v)} />
-          <Input label="Season" size="sm" type="number" variant="underlined" value={String(link.season || "")} onValueChange={(v) => updateLink(idx, "season", Number(v))} />
+          <Input label="Size" size="sm" variant="underlined" value={link.size || ""} onValueChange={(v) => updateLink(idx, "size", v)} />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+          <Input label="Season" size="sm" type="number" variant="underlined" value={String(link.season || "")} onValueChange={(v) => updateLink(idx, "season", v ? Number(v) : null)} />
+          <Input label="Filename" size="sm" variant="underlined" value={link.filename || ""} onValueChange={(v) => updateLink(idx, "filename", v)} />
           </div>
           </div>
         ))}

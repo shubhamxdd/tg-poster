@@ -7,6 +7,11 @@ import movieRoutes from './routes/movies.js';
 
 dotenv.config();
 
+// Prevent nodemon from crashing on unhandled DB rejections
+process.on('unhandledRejection', (reason) => {
+  console.error('Unhandled rejection:', reason);
+});
+
 // Connect to MongoDB
 connectDB();
 

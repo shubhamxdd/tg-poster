@@ -1,4 +1,5 @@
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState, useMemo, useRef } from "react";
+import React from "react";
 import { useParams, Link } from "react-router-dom";
 import { movieApi } from "@/api/movieApi";
 import type { Movie, Link as MovieLink } from "@/types/index";
@@ -24,6 +25,7 @@ import {
   Share2,
   Heart,
   ChevronLeft,
+  ChevronRight,
   ChevronDown,
   HardDrive,
   Languages,
@@ -329,29 +331,14 @@ export default function MovieDetailPage() {
     </div>
 
     {seasonNames.length > 1 ? (
-      <Tabs
-      aria-label="Download seasons"
-      classNames={{
-        base: "w-full",
-        tabList: "bg-white/3 border border-white/8 p-1 rounded-2xl gap-1 flex-nowrap overflow-x-auto scrollbar-hide w-full",
-        cursor: "bg-brand shadow-lg shadow-brand/30 rounded-xl",
-        tab: "font-bold text-xs uppercase tracking-widest text-white/40 data-[selected=true]:text-white h-9 px-5 shrink-0",
-        panel: "pt-6",
-      }}
-      >
-      {seasonNames.map((name) => (
-        <Tab key={name} title={name}>
-        <SeasonContent
-          seasonName={name}
-          links={seasonGroups[name]}
-          onDownload={handleDownload}
-          movieAudio={movie.audio}
-          expandedEpisodes={expandedEpisodes}
-          onToggleEpisode={toggleEpisode}
-        />
-        </Tab>
-      ))}
-      </Tabs>
+      <SeasonSlider
+        seasonNames={seasonNames}
+        seasonGroups={seasonGroups}
+        onDownload={handleDownload}
+        movieAudio={movie.audio}
+        expandedEpisodes={expandedEpisodes}
+        onToggleEpisode={toggleEpisode}
+      />
     ) : seasonNames.length === 1 ? (
       <SeasonContent
         seasonName={seasonNames[0]}
@@ -452,6 +439,114 @@ export default function MovieDetailPage() {
   );
 }
 
+/* ── SeasonSlider — scrollable season picker with arrows + fade hints ── */
+
+function SeasonSlider({
+  seasonNames,
+  seasonGroups,
+  onDownload,
+  movieAudio,
+  expandedEpisodes,
+  onToggleEpisode,
+}: {
+  seasonNames: string[];
+  seasonGroups: Record<string, MovieLink[]>;
+  onDownload: (url: string) => void;
+  movieAudio?: string[];
+  expandedEpisodes: Record<string, boolean>;
+  onToggleEpisode: (key: string) => void;
+}) {
+  const [activeSeason, setActiveSeason] = useState(seasonNames[0]);
+  const [canScrollLeft, setCanScrollLeft] = useState(false);
+  const [canScrollRight, setCanScrollRight] = useState(false);
+  const scrollRef = useRef<HTMLDivElement>(null);
+
+  const checkScroll = () => {
+    const el = scrollRef.current;
+    if (!el) return;
+    setCanScrollLeft(el.scrollLeft > 4);
+    setCanScrollRight(el.scrollLeft + el.clientWidth < el.scrollWidth - 4);
+  };
+
+  useEffect(() => {
+    checkScroll();
+    const el = scrollRef.current;
+    if (!el) return;
+    el.addEventListener("scroll", checkScroll, { passive: true });
+    const ro = new ResizeObserver(checkScroll);
+    ro.observe(el);
+    return () => { el.removeEventListener("scroll", checkScroll); ro.disconnect(); };
+  }, []);
+
+  const scroll = (dir: "left" | "right") => {
+    const el = scrollRef.current;
+    if (!el) return;
+    el.scrollBy({ left: dir === "left" ? -160 : 160, behavior: "smooth" });
+  };
+
+  return (
+    <div className="space-y-5">
+      <div className="relative">
+        {canScrollLeft && (
+          <div className="absolute left-0 top-0 bottom-0 w-12 bg-gradient-to-r from-[#0D0D0F] to-transparent z-10 pointer-events-none rounded-l-2xl" />
+        )}
+        {canScrollRight && (
+          <div className="absolute right-0 top-0 bottom-0 w-16 bg-gradient-to-l from-[#0D0D0F] to-transparent z-10 pointer-events-none rounded-r-2xl" />
+        )}
+        {canScrollLeft && (
+          <button
+            onPointerDown={(e) => { e.preventDefault(); scroll("left"); }}
+            className="absolute left-1 top-1/2 -translate-y-1/2 z-20 w-7 h-7 rounded-full bg-white/10 border border-white/15 flex items-center justify-center hover:bg-white/20 transition-all"
+          >
+            <ChevronLeft className="w-3.5 h-3.5 text-white/70" />
+          </button>
+        )}
+        {canScrollRight && (
+          <button
+            onPointerDown={(e) => { e.preventDefault(); scroll("right"); }}
+            className="absolute right-1 top-1/2 -translate-y-1/2 z-20 w-7 h-7 rounded-full bg-white/10 border border-white/15 flex items-center justify-center hover:bg-white/20 transition-all"
+          >
+            <ChevronRight className="w-3.5 h-3.5 text-white/70" />
+          </button>
+        )}
+        <div
+          ref={scrollRef}
+          className="flex gap-2 overflow-x-auto scrollbar-hide px-1 py-1 bg-white/3 border border-white/8 rounded-2xl"
+          style={{ WebkitOverflowScrolling: "touch" } as React.CSSProperties}
+        >
+          {seasonNames.map((name) => (
+            <button
+              key={name}
+              type="button"
+              onPointerDown={(e) => { e.preventDefault(); setActiveSeason(name); }}
+              className={`shrink-0 h-9 px-5 rounded-xl text-xs font-bold uppercase tracking-widest transition-all duration-200
+                ${activeSeason === name
+                  ? "bg-brand text-white shadow-lg shadow-brand/30"
+                  : "text-white/40 hover:text-white/70 hover:bg-white/5"
+                }`}
+            >
+              {name}
+            </button>
+          ))}
+        </div>
+        {seasonNames.length > 3 && (
+          <p className="text-center text-[10px] text-white/20 mt-1.5 tracking-wider">
+            ← swipe to see all seasons →
+          </p>
+        )}
+      </div>
+      <SeasonContent
+        seasonName={activeSeason}
+        links={seasonGroups[activeSeason]}
+        onDownload={onDownload}
+        movieAudio={movieAudio}
+        expandedEpisodes={expandedEpisodes}
+        onToggleEpisode={onToggleEpisode}
+      />
+    </div>
+  );
+}
+
 /* ── SeasonContent — renders links for one season with expandable multi-quality episodes ── */
 
 function SeasonContent({
@@ -482,10 +577,16 @@ function SeasonContent({
     else                                  untyped.push(link);
   }
 
-  // Build episode map from explicitly-episode-typed links + untyped links
-  const episodeSourceLinks = episodeLinks.length > 0 ? episodeLinks : untyped;
+  // Build episode map from:
+  //   1. explicitly typed episode links
+  //   2. untyped links that have a real episode number (old data / linkType missing)
+  // Untyped links with NO episode number stay as nonEpisodeLinks (season packs, etc.)
+  const untypedEpisodes = untyped.filter(l => l.episode != null);
+  const untypedNonEpisodes = untyped.filter(l => l.episode == null);
+  const episodeSourceLinks = [...episodeLinks, ...untypedEpisodes];
+
   const episodeMap = new Map<number, MovieLink[]>();
-  const nonEpisodeLinks: MovieLink[] = [];
+  const nonEpisodeLinks: MovieLink[] = [...untypedNonEpisodes];
 
   for (const link of episodeSourceLinks) {
     let realEp = link.episode ?? null;
@@ -557,7 +658,7 @@ function SeasonContent({
     </>
   );
 
-  const hasTyped = zipLinks.length > 0 || packageLinks.length > 0 || episodeLinks.length > 0;
+  const hasTyped = zipLinks.length > 0 || packageLinks.length > 0 || episodeMap.size > 0;
 
   return (
     <div className="space-y-3">
@@ -569,11 +670,11 @@ function SeasonContent({
       {packageLinks.length > 0 && (
         <><SectionHeader title="Package Downloads" /><div className="space-y-3">{packageLinks.map((l, i) => <DownloadRow key={i} link={l} onDownload={onDownload} movieAudio={movieAudio} />)}</div></>
       )}
-      {(episodeLinks.length > 0 || episodeMap.size > 0) && (
+      {episodeMap.size > 0 && (
         <><SectionHeader title="Episode Downloads" /><EpisodeGroup /></>
       )}
-      {/* Untyped non-episode links (season packs from old data mixed with typed links) */}
-      {episodeLinks.length === 0 && nonEpisodeLinks.length > 0 && episodeMap.size === 0 && (
+      {/* Untyped non-episode links alongside typed content (old season packs, etc.) */}
+      {nonEpisodeLinks.length > 0 && (
         <div className="space-y-3">{nonEpisodeLinks.map((l, i) => <DownloadRow key={i} link={l} onDownload={onDownload} movieAudio={movieAudio} />)}</div>
       )}
       </>
