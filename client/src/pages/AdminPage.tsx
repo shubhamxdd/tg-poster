@@ -293,32 +293,19 @@ export default function AdminPage() {
 
   const autoDetectLinkTypes = () => {
     if (!manualPreview?.links) return;
-    const newMap: Record<string, 'zip' | 'package' | 'episode'> = {};
 
-    // Group links by season first, then decide per group
-    const bySeasonKey: Record<string, any[]> = {};
-    (manualPreview.links as any[]).forEach((link: any) => {
-      const seasonKey = link.season != null ? String(link.season) : 'all';
-      if (!bySeasonKey[seasonKey]) bySeasonKey[seasonKey] = [];
-      bySeasonKey[seasonKey].push(link);
+    const updatedLinks = (manualPreview.links as any[]).map((link: any) => {
+      // Episode number present → episode-wise
+      if (link.episode != null) return { ...link, linkType: 'episode' };
+      const filename = (link.filename || '').toLowerCase();
+      const url      = (link.url || '').toLowerCase();
+      const lt       = /\.zip\b/.test(filename) || /\.zip\b/.test(url) ? 'zip' : 'package';
+      return { ...link, linkType: lt };
     });
 
-    Object.entries(bySeasonKey).forEach(([seasonKey, links]) => {
-      // If any link has an episode number → episode-wise
-      const hasEpisode = links.some((l: any) => l.episode != null);
-      if (hasEpisode) {
-        newMap[seasonKey] = 'episode';
-        return;
-      }
-      // If any filename/url contains .zip → zip
-      const hasZip = links.some((l: any) =>
-        /\.zip\b/.test((l.filename || '').toLowerCase()) ||
-        /\.zip\b/.test((l.url || '').toLowerCase())
-      );
-      newMap[seasonKey] = hasZip ? 'zip' : 'package';
-    });
-
-    setLinkTypeMap(newMap);
+    setManualPreview({ ...manualPreview, links: updatedLinks });
+    // Clear season-level map — per-link types now take precedence
+    setLinkTypeMap({});
   };
 
   const handleManualParse = async () => {
@@ -387,8 +374,9 @@ export default function AdminPage() {
     if (!manualPreview) return;
     setManualSaving(true);
     try {
-      // Apply linkType from linkTypeMap to each link based on season
+      // Apply linkType: per-link override takes priority, then season map, then null
       const linksWithType = (manualPreview.links || []).map((link: any) => {
+        if (link.linkType) return link; // already stamped by auto-detect (mixed season)
         const seasonKey = link.season != null ? String(link.season) : 'all';
         const lt = linkTypeMap[seasonKey] || linkTypeMap['all'] || null;
         return { ...link, linkType: lt };
@@ -771,7 +759,6 @@ export default function AdminPage() {
 
         {/* ── Link Type Selector (series/anime only) ──────────────────────── */}
         {(manualPreview.type === 'series' || manualPreview.type === 'anime') && (() => {
-          // Group links by season to show one selector per season block
           const seasonKeys: string[] = [];
           const seenSeasons = new Set<string>();
           (manualPreview.links || []).forEach((l: any) => {
@@ -779,56 +766,106 @@ export default function AdminPage() {
             if (!seenSeasons.has(k)) { seenSeasons.add(k); seasonKeys.push(k); }
           });
           const opts: { key: 'zip' | 'package' | 'episode'; label: string; icon: string }[] = [
-            { key: 'zip',     label: 'Zip',          icon: '🗜️' },
-            { key: 'package', label: 'Package',      icon: '📦' },
-            { key: 'episode', label: 'Episode Wise', icon: '🎬' },
+            { key: 'zip',     label: 'Zip',     icon: '🗜️' },
+            { key: 'package', label: 'Package', icon: '📦' },
+            { key: 'episode', label: 'Episode', icon: '🎬' },
           ];
+          const typeColor: Record<string, string> = {
+            zip:     'bg-orange-500/20 border-orange-400/60 text-orange-300',
+            package: 'bg-blue-500/20 border-blue-400/60 text-blue-300',
+            episode: 'bg-purple-500/20 border-purple-400/60 text-purple-300',
+          };
+
           return (
-            <div className="p-4 rounded-xl bg-white/5 border border-white/10 space-y-3">
+            <div className="p-4 rounded-xl bg-white/5 border border-white/10 space-y-4">
+            {/* Header */}
             <div className="flex items-center justify-between">
-            <p className="text-xs font-bold uppercase tracking-widest text-white/50">Link Type — Select for each season block</p>
-            <button
-              onPointerDown={(e) => { e.preventDefault(); autoDetectLinkTypes(); }}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold border border-brand/30 bg-brand/10 text-brand hover:bg-brand/20 transition-all"
-            >
-              ⚡ Auto-detect from filenames
-            </button>
+              <p className="text-xs font-bold uppercase tracking-widest text-white/50">Link Type</p>
+              <button
+                onPointerDown={(e) => { e.preventDefault(); autoDetectLinkTypes(); }}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold border border-brand/30 bg-brand/10 text-brand hover:bg-brand/20 transition-all"
+              >
+                ⚡ Auto-detect from filenames
+              </button>
             </div>
-            <div className="grid gap-3">
+
+            {/* Per-season blocks */}
             {seasonKeys.map(sk => {
-              const label = sk === 'all' ? 'All Links' : `Season ${sk}`;
+              const skLabel = sk === 'all' ? 'All Links' : `Season ${sk}`;
+              const seasonLinks = (manualPreview.links || []).filter((l: any) =>
+                (l.season != null ? String(l.season) : 'all') === sk
+              );
+
               return (
-                <div key={sk} className="flex items-center gap-3 flex-wrap">
-                <span className="text-xs text-white/40 w-20 shrink-0 font-bold">{label}</span>
-                <div className="flex gap-2 flex-wrap">
-                {opts.map(opt => {
-                  const isActive = linkTypeMap[sk] === opt.key;
-                  return (
-                    <button
-                      key={opt.key}
-                      type="button"
-                      onPointerDown={(e) => {
-                        e.preventDefault();
-                        setLinkTypeMap(prev => {
-                          const next = { ...prev };
-                          if (next[sk] === opt.key) { delete next[sk]; } else { next[sk] = opt.key; }
-                          return next;
-                        });
-                      }}
-                      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold border transition-all
-                        ${isActive
-                          ? 'bg-brand/20 border-brand text-brand'
-                          : 'bg-white/5 border-white/10 text-white/40 hover:border-white/30 hover:text-white/70'}`}
-                    >
-                    {opt.icon} {opt.label}
-                    </button>
-                  );
-                })}
-                </div>
+                <div key={sk} className="space-y-2">
+                  {/* Season label + bulk buttons */}
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-[11px] font-bold text-white/40 w-16 shrink-0">{skLabel}</span>
+                    <div className="flex gap-1.5 flex-wrap">
+                      {opts.map(opt => (
+                        <button
+                          key={opt.key}
+                          type="button"
+                          onPointerDown={(e) => {
+                            e.preventDefault();
+                            // Stamp all links in this season with this type
+                            const updatedLinks = (manualPreview.links || []).map((l: any) => {
+                              const lk = l.season != null ? String(l.season) : 'all';
+                              if (lk !== sk) return l;
+                              return { ...l, linkType: opt.key };
+                            });
+                            setManualPreview({ ...manualPreview, links: updatedLinks });
+                            setLinkTypeMap(prev => ({ ...prev, [sk]: opt.key }));
+                          }}
+                          className={`flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-bold border transition-all
+                            ${seasonLinks.every((l: any) => l.linkType === opt.key)
+                              ? 'bg-brand/20 border-brand text-brand'
+                              : 'bg-white/5 border-white/10 text-white/40 hover:border-white/30 hover:text-white/60'}`}
+                        >
+                          {opt.icon} All {opt.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Per-link type badges */}
+                  <div className="ml-[4.5rem] space-y-1.5">
+                    {seasonLinks.map((l: any) => {
+                      const globalIdx = (manualPreview.links || []).indexOf(l);
+                      const lt = l.linkType as string | undefined;
+                      const name = (l.filename || l.url || '').split('/').pop() || '—';
+                      return (
+                        <div key={globalIdx} className="flex items-center gap-2">
+                          <span className="text-[10px] text-white/25 font-mono truncate flex-1 min-w-0" title={name}>
+                            {name.length > 35 ? name.slice(0, 35) + '…' : name}
+                          </span>
+                          <div className="flex gap-1 shrink-0">
+                            {opts.map(opt => (
+                              <button
+                                key={opt.key}
+                                type="button"
+                                onPointerDown={(e) => {
+                                  e.preventDefault();
+                                  const updatedLinks = [...(manualPreview.links || [])];
+                                  updatedLinks[globalIdx] = { ...updatedLinks[globalIdx], linkType: opt.key };
+                                  setManualPreview({ ...manualPreview, links: updatedLinks });
+                                }}
+                                className={`text-[10px] font-bold px-2 py-0.5 rounded border transition-all
+                                  ${lt === opt.key
+                                    ? typeColor[opt.key]
+                                    : 'bg-white/3 border-white/8 text-white/20 hover:text-white/50 hover:border-white/20'}`}
+                              >
+                                {opt.icon}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
               );
             })}
-            </div>
             </div>
           );
         })()}
