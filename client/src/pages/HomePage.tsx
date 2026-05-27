@@ -14,6 +14,9 @@ import { Play, Download, Star, Search, Filter, SortAsc, ChevronLeft, ChevronRigh
 
 const GENRES = ["Action", "Adventure", "Animation", "Comedy", "Crime", "Drama", "Family", "Fantasy", "Horror", "Mystery", "Romance", "Sci-Fi", "Thriller"];
 
+// Module-level cache — survives component unmount/remount (i.e. navigating away and back)
+const movieCache = new Map<string, { movies: Movie[]; totalPages: number; totalCount: number }>();
+
 export default function HomePage() {
   const [movies, setMovies] = useState<Movie[]>([]);
   const [loading, setLoading] = useState(true);
@@ -28,8 +31,21 @@ export default function HomePage() {
   // Local state for UI components (synced to searchParams)
   const [searchInput, setSearchInput] = useState(searchParams.get("search") || "");
 
-  const fetchMovies = useCallback(async () => {
-    setLoading(true);
+  const fetchMovies = useCallback(async (isBackground = false) => {
+    const cacheKey = searchParams.toString() || "default";
+    const cached = movieCache.get(cacheKey);
+
+    if (cached) {
+      // Show cached data instantly — no loading spinner
+      setMovies(cached.movies);
+      setTotalPages(cached.totalPages);
+      setTotalCount(cached.totalCount);
+      setLoading(false);
+      if (!isBackground) return; // don't re-fetch unless it's a background revalidation
+    } else {
+      setLoading(true);
+    }
+
     try {
       const data = await movieApi.getMovies({
         type: searchParams.get("type") || undefined,
@@ -37,6 +53,11 @@ export default function HomePage() {
         search: searchParams.get("search") || undefined,
         sortBy: searchParams.get("sortBy") || "addedAt",
         page: currentPage,
+      });
+      movieCache.set(cacheKey, {
+        movies: data.movies,
+        totalPages: data.totalPages,
+        totalCount: (data as any).total ?? data.movies.length,
       });
       setMovies(data.movies);
       setTotalPages(data.totalPages);
@@ -59,15 +80,17 @@ export default function HomePage() {
   }, []);
 
   useEffect(() => {
-    fetchMovies();
-    // POP = browser back/forward — don't scroll to top, restore position instead
-    // PUSH/REPLACE = new navigation or filter change — scroll to top as before
-    if (navigationType !== "POP") {
+    if (navigationType === "POP") {
+      // On back navigation: show cache instantly, revalidate silently in background
+      fetchMovies(true);
+    } else {
+      // Normal navigation (filter/search/page change): fetch fresh, scroll to top
+      fetchMovies(false);
       window.scrollTo({ top: 0, behavior: "smooth" });
     }
   }, [searchParams]);
 
-  // After movies load on POP (back navigation), restore saved scroll position
+  // After data is ready on POP (back navigation), restore saved scroll position
   useEffect(() => {
     if (navigationType === "POP" && !loading) {
       const saved = sessionStorage.getItem("homeScrollY");
