@@ -1,7 +1,7 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { movieApi } from "@/api/movieApi";
 import type { Movie } from "@/types/index";
-import { Link, useSearchParams } from "react-router-dom";
+import { Link, useSearchParams, useNavigationType } from "react-router-dom";
 import { generateMovieSlugFull } from "@/lib/utils";
 import {
   Button,
@@ -20,6 +20,8 @@ export default function HomePage() {
   const [totalPages, setTotalPages] = useState(1);
   const [totalCount, setTotalCount] = useState(0);
   const [searchParams, setSearchParams] = useSearchParams();
+  const navigationType = useNavigationType();
+  const savedScrollY = useRef<number>(0);
 
   const currentPage = Number(searchParams.get("page") || "1");
 
@@ -46,10 +48,40 @@ export default function HomePage() {
     }
   }, [searchParams]);
 
+  // Save scroll position whenever user scrolls (captured before clicking a card)
+  useEffect(() => {
+    const handleScroll = () => {
+      savedScrollY.current = window.scrollY;
+      sessionStorage.setItem("homeScrollY", String(window.scrollY));
+    };
+    window.addEventListener("scroll", handleScroll, { passive: true });
+    return () => window.removeEventListener("scroll", handleScroll);
+  }, []);
+
   useEffect(() => {
     fetchMovies();
-    window.scrollTo({ top: 0, behavior: "smooth" });
+    // POP = browser back/forward — don't scroll to top, restore position instead
+    // PUSH/REPLACE = new navigation or filter change — scroll to top as before
+    if (navigationType !== "POP") {
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }
   }, [searchParams]);
+
+  // After movies load on POP (back navigation), restore saved scroll position
+  useEffect(() => {
+    if (navigationType === "POP" && !loading) {
+      const saved = sessionStorage.getItem("homeScrollY");
+      if (saved) {
+        const y = Number(saved);
+        // Double rAF ensures the DOM has fully painted the cards before scrolling
+        requestAnimationFrame(() => {
+          requestAnimationFrame(() => {
+            window.scrollTo({ top: y, behavior: "instant" });
+          });
+        });
+      }
+    }
+  }, [loading, navigationType]);
 
   // Debounced Search Effect
   useEffect(() => {
