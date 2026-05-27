@@ -2,7 +2,7 @@ import { useEffect, useState, useCallback, useRef } from "react";
 import { movieApi } from "@/api/movieApi";
 import type { Movie } from "@/types/index";
 import { Link, useSearchParams, useNavigationType } from "react-router-dom";
-import { generateMovieSlugFull } from "@/lib/utils";
+import { generateMovieSlugFull, getTypePrefix } from "@/lib/utils";
 import {
   Button,
   Spinner,
@@ -320,6 +320,7 @@ export default function HomePage() {
 
 function MovieCard({ movie }: { movie: Movie }) {
   const slug = generateMovieSlugFull(movie.title, movie.year, movie._id);
+  const typePrefix = getTypePrefix(movie.type);
 
   const TYPE_COLORS: Record<string, string> = {
     movie: "bg-blue-600",
@@ -329,7 +330,7 @@ function MovieCard({ movie }: { movie: Movie }) {
   const typeClass = TYPE_COLORS[movie.type] || "bg-white/30";
 
   return (
-    <Link to={`/movie/${slug}`} className="group block select-none">
+    <Link to={`/${typePrefix}/${slug}`} className="group block select-none">
       {/* Poster wrapper — padding-bottom trick for consistent 2:3 ratio */}
       <div className="relative w-full overflow-hidden rounded-xl" style={{ paddingBottom: "150%" }}>
         <img

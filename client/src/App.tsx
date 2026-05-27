@@ -13,6 +13,8 @@ function App() {
           <Routes>
             <Route path="/" element={<HomePage />} />
             <Route path="/movie/:slug" element={<MovieDetailPage />} />
+            <Route path="/series/:slug" element={<MovieDetailPage />} />
+            <Route path="/anime/:slug" element={<MovieDetailPage />} />
             <Route path="/admin" element={<AdminPage />} />
           </Routes>
         </main>
