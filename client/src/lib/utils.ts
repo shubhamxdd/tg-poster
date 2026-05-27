@@ -55,7 +55,7 @@ export function extractIdFromSlug(slug: string): string {
  * but displaying it as title-year-8chars in the visible URL.
  * We embed full ObjectId as the last URL segment so we can always look it up.
  */
-export function generateMovieSlugFull(title: string, year: number | null, id: string): string {
+export function generateMovieSlugFull(title: string, year: number | null, id: string, type?: string): string {
   const titleSlug = title
     .toLowerCase()
     .replace(/[^a-z0-9\s-]/g, "")
@@ -66,6 +66,16 @@ export function generateMovieSlugFull(title: string, year: number | null, id: st
 
   const yearPart = year ? String(year) : "unknown";
   return `${titleSlug}-${yearPart}-${id}`;
+}
+
+/**
+ * Returns the URL path prefix based on content type.
+ * movie -> /movie, series -> /series, anime -> /anime
+ */
+export function getTypePrefix(type?: string): string {
+  if (type === "series") return "series";
+  if (type === "anime") return "anime";
+  return "movie";
 }
 
 /**

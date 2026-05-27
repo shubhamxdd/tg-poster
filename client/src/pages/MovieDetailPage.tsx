@@ -1,6 +1,6 @@
 import { useEffect, useState, useMemo, useRef } from "react";
 import React from "react";
-import { useParams, Link } from "react-router-dom";
+import { useParams, Link, useNavigate } from "react-router-dom";
 import { movieApi } from "@/api/movieApi";
 import type { Movie, Link as MovieLink } from "@/types/index";
 import { extractFullIdFromSlug } from "@/lib/utils";
@@ -38,10 +38,15 @@ import {
 
 export default function MovieDetailPage() {
   const { slug } = useParams<{ slug: string }>();
+  const navigate = useNavigate();
   const [movie, setMovie] = useState<Movie | null>(null);
   const [loading, setLoading] = useState(true);
   const [wishlist, setWishlist] = useState(false);
   const [expandedEpisodes, setExpandedEpisodes] = useState<Record<string, boolean>>({});
+
+  // True when there's a real history entry behind us (user navigated from within the app)
+  const canGoBack = (window.history.state?.idx ?? 0) > 0;
+  const handleBack = () => canGoBack ? navigate(-1) : navigate("/");
 
   const id = useMemo(() => (slug ? extractFullIdFromSlug(slug) : ""), [slug]);
 
@@ -186,8 +191,7 @@ export default function MovieDetailPage() {
 
     <div className="absolute top-20 left-4 md:left-8 z-20">
     <Button
-    as={Link}
-    to="/"
+    onPress={handleBack}
     variant="flat"
     className="bg-black/40 backdrop-blur-md border border-white/10 text-white/70 hover:text-white rounded-xl h-9 px-3 text-sm"
     startContent={<ChevronLeft className="w-4 h-4" />}
