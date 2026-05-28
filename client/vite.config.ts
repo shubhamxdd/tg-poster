@@ -21,4 +21,22 @@ export default defineConfig({
       },
     },
   },
+  build: {
+    minify: "terser",
+    terserOptions: {
+      compress: { drop_console: true, drop_debugger: true },
+    },
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          // React core — changes rarely, long cache lifetime
+          "vendor-react": ["react", "react-dom", "react-router-dom"],
+          // HeroUI component library
+          "vendor-heroui": ["@heroui/react"],
+          // Icons — large but static
+          "vendor-icons": ["lucide-react"],
+        },
+      },
+    },
+  },
 })
