@@ -36,11 +36,20 @@ import {
   ShieldCheck,
 } from "lucide-react";
 
+import { detailCache } from "@/lib/movieDetailCache";
+
 export default function MovieDetailPage() {
   const { slug } = useParams<{ slug: string }>();
   const navigate = useNavigate();
+
+  // Derive id first — all state that depends on it must come after
+  const id = useMemo(() => (slug ? extractFullIdFromSlug(slug) : ""), [slug]);
+
   const [movie, setMovie] = useState<Movie | null>(null);
-  const [loading, setLoading] = useState(true);
+  // Start loading=false; the fetch useEffect sets it to true when needed.
+  // This prevents a permanent black screen if id is empty or invalid.
+  const [loading, setLoading] = useState(false);
+  const [fetchError, setFetchError] = useState(false);
   const [wishlist, setWishlist] = useState(false);
   const [expandedEpisodes, setExpandedEpisodes] = useState<Record<string, boolean>>({});
 
@@ -48,22 +57,55 @@ export default function MovieDetailPage() {
   const canGoBack = (window.history.state?.idx ?? 0) > 0;
   const handleBack = () => canGoBack ? navigate(-1) : navigate("/");
 
-  const id = useMemo(() => (slug ? extractFullIdFromSlug(slug) : ""), [slug]);
+  // Sync wishlist from localStorage whenever id is known
+  useEffect(() => {
+    if (!id) return;
+    try { setWishlist(localStorage.getItem(`wishlist:${id}`) === "1"); } catch {}
+  }, [id]);
+
+  const toggleWishlist = () => {
+    setWishlist(prev => {
+      const next = !prev;
+      try { next ? localStorage.setItem(`wishlist:${id}`, "1") : localStorage.removeItem(`wishlist:${id}`); } catch {}
+      return next;
+    });
+  };
+
+  // Scroll to top on every page open — fixes random scroll position on mobile/tablet
+  useEffect(() => {
+    window.scrollTo({ top: 0, behavior: "instant" });
+  }, []);
 
   useEffect(() => {
-    const fetchMovie = async () => {
-      if (!id) return;
-      setLoading(true);
+    if (!id) return; // no id = nothing to fetch, don't show spinner
+
+    setFetchError(false);
+
+    const fetchMovie = async (isBackground = false) => {
+      const cached = detailCache.get(id);
+      if (cached) {
+        // Show cached data instantly — no loading spinner
+        setMovie(cached);
+        setLoading(false);
+        if (!isBackground) return;
+      } else {
+        setLoading(true);
+      }
+
       try {
         const data = await movieApi.getMovieById(id);
+        detailCache.set(id, data);
         setMovie(data);
       } catch (error) {
         console.error(error);
+        if (!isBackground) setFetchError(true);
       } finally {
         setLoading(false);
       }
     };
-    fetchMovie();
+
+    // If we have a cache hit, revalidate silently in background; otherwise fetch fresh
+    fetchMovie(detailCache.has(id));
   }, [id]);
 
   const seasonGroups = useMemo(() => {
@@ -144,6 +186,28 @@ export default function MovieDetailPage() {
       <div className="w-2 h-2 rounded-full bg-brand animate-bounce" style={{ animationDelay: "150ms" }} />
       <div className="w-2 h-2 rounded-full bg-brand animate-bounce" style={{ animationDelay: "300ms" }} />
       </div>
+      </div>
+      </div>
+    );
+  }
+
+  if (fetchError) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center pt-20 gap-6">
+      <div className="w-20 h-20 rounded-3xl bg-white/5 border border-white/10 flex items-center justify-center">
+      <Film className="w-10 h-10 text-white/20" />
+      </div>
+      <div className="text-center space-y-2">
+      <h2 className="font-display text-3xl tracking-wider">FAILED TO LOAD</h2>
+      <p className="text-white/40 text-sm">Something went wrong. Check your connection and try again.</p>
+      </div>
+      <div className="flex gap-3">
+      <Button onPress={() => { setFetchError(false); setLoading(true); movieApi.getMovieById(id).then(d => { detailCache.set(id, d); setMovie(d); }).catch(() => setFetchError(true)).finally(() => setLoading(false)); }} className="bg-brand text-white rounded-full font-bold">
+      Retry
+      </Button>
+      <Button as={Link} to="/" variant="flat" className="text-white/60 rounded-full">
+      Back to Vault
+      </Button>
       </div>
       </div>
     );
@@ -297,7 +361,7 @@ export default function MovieDetailPage() {
     <Button
     isIconOnly
     variant="flat"
-    onPress={() => setWishlist(!wishlist)}
+    onPress={toggleWishlist}
     className={`h-12 w-12 rounded-xl border ${wishlist ? "bg-brand/20 border-brand/30 text-brand" : "bg-white/5 border-white/10 text-white/50 hover:text-white"} transition-all`}
     >
     <Heart className={`w-5 h-5 ${wishlist ? "fill-current" : ""}`} />

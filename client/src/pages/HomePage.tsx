@@ -3,6 +3,7 @@ import { movieApi } from "@/api/movieApi";
 import type { Movie } from "@/types/index";
 import { Link, useSearchParams, useNavigationType } from "react-router-dom";
 import { generateMovieSlugFull, getTypePrefix } from "@/lib/utils";
+import { detailCache } from "@/lib/movieDetailCache";
 import {
   Button,
   Spinner,
@@ -10,23 +11,35 @@ import {
   Select,
   SelectItem,
 } from "@heroui/react";
-import { Play, Download, Star, Search, Filter, SortAsc, ChevronLeft, ChevronRight } from "lucide-react";
+import { Download, Star, Search, Filter, SortAsc, ChevronLeft, ChevronRight } from "lucide-react";
 
 const GENRES = ["Action", "Adventure", "Animation", "Comedy", "Crime", "Drama", "Family", "Fantasy", "Horror", "Mystery", "Romance", "Sci-Fi", "Thriller"];
 
 // Module-level cache — survives component unmount/remount (i.e. navigating away and back)
+// Capped at 20 entries; oldest entry is evicted when limit is reached (simple LRU)
+const MOVIE_CACHE_MAX = 20;
 const movieCache = new Map<string, { movies: Movie[]; totalPages: number; totalCount: number }>();
+function setCapped<K, V>(map: Map<K, V>, key: K, value: V, max: number) {
+  if (map.has(key)) map.delete(key); // refresh position
+  map.set(key, value);
+  if (map.size > max) map.delete(map.keys().next().value!);
+}
 
 export default function HomePage() {
-  const [movies, setMovies] = useState<Movie[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [totalPages, setTotalPages] = useState(1);
-  const [totalCount, setTotalCount] = useState(0);
   const [searchParams, setSearchParams] = useSearchParams();
   const navigationType = useNavigationType();
   const savedScrollY = useRef<number>(0);
 
   const currentPage = Number(searchParams.get("page") || "1");
+
+  // Initialise from cache synchronously so there's zero loading flash on back navigation
+  const initialCacheKey = searchParams.toString() || "default";
+  const initialCached = movieCache.get(initialCacheKey);
+
+  const [movies, setMovies] = useState<Movie[]>(initialCached?.movies ?? []);
+  const [loading, setLoading] = useState(!initialCached); // false when cache hit, true otherwise
+  const [totalPages, setTotalPages] = useState(initialCached?.totalPages ?? 1);
+  const [totalCount, setTotalCount] = useState(initialCached?.totalCount ?? 0);
 
   // Local state for UI components (synced to searchParams)
   const [searchInput, setSearchInput] = useState(searchParams.get("search") || "");
@@ -54,11 +67,11 @@ export default function HomePage() {
         sortBy: searchParams.get("sortBy") || "addedAt",
         page: currentPage,
       });
-      movieCache.set(cacheKey, {
+      setCapped(movieCache, cacheKey, {
         movies: data.movies,
         totalPages: data.totalPages,
         totalCount: (data as any).total ?? data.movies.length,
-      });
+      }, MOVIE_CACHE_MAX);
       setMovies(data.movies);
       setTotalPages(data.totalPages);
       setTotalCount((data as any).total ?? data.movies.length);
@@ -353,13 +366,15 @@ function MovieCard({ movie }: { movie: Movie }) {
   const typeClass = TYPE_COLORS[movie.type] || "bg-white/30";
 
   return (
-    <Link to={`/${typePrefix}/${slug}`} className="group block select-none">
+    <Link to={`/${typePrefix}/${slug}`} className="group block select-none" onClick={() => detailCache.set(movie._id, movie)}>
       {/* Poster wrapper — padding-bottom trick for consistent 2:3 ratio */}
       <div className="relative w-full overflow-hidden rounded-xl" style={{ paddingBottom: "150%" }}>
         <img
           src={movie.poster || "https://placehold.co/300x450/111215/444?text=No+Poster"}
           alt={movie.title}
           className="absolute inset-0 w-full h-full object-cover transition-transform duration-500 group-hover:scale-[1.04]"
+          loading="lazy"
+          decoding="async"
           draggable={false}
         />
 
