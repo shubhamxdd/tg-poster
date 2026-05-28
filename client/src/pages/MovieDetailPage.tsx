@@ -36,6 +36,8 @@ import {
   ShieldCheck,
 } from "lucide-react";
 
+import { detailCache } from "@/lib/movieDetailCache";
+
 export default function MovieDetailPage() {
   const { slug } = useParams<{ slug: string }>();
   const navigate = useNavigate();
@@ -50,12 +52,28 @@ export default function MovieDetailPage() {
 
   const id = useMemo(() => (slug ? extractFullIdFromSlug(slug) : ""), [slug]);
 
+  // Scroll to top on every page open — fixes random scroll position on mobile/tablet
   useEffect(() => {
-    const fetchMovie = async () => {
+    window.scrollTo({ top: 0, behavior: "instant" });
+  }, []);
+
+  useEffect(() => {
+    const fetchMovie = async (isBackground = false) => {
       if (!id) return;
-      setLoading(true);
+
+      const cached = detailCache.get(id);
+      if (cached) {
+        // Show cached data instantly — no loading spinner
+        setMovie(cached);
+        setLoading(false);
+        if (!isBackground) return;
+      } else {
+        setLoading(true);
+      }
+
       try {
         const data = await movieApi.getMovieById(id);
+        detailCache.set(id, data);
         setMovie(data);
       } catch (error) {
         console.error(error);
@@ -63,7 +81,9 @@ export default function MovieDetailPage() {
         setLoading(false);
       }
     };
-    fetchMovie();
+
+    // If we have a cache hit, revalidate silently in background; otherwise fetch fresh
+    fetchMovie(detailCache.has(id));
   }, [id]);
 
   const seasonGroups = useMemo(() => {

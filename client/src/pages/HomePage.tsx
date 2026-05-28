@@ -3,6 +3,7 @@ import { movieApi } from "@/api/movieApi";
 import type { Movie } from "@/types/index";
 import { Link, useSearchParams, useNavigationType } from "react-router-dom";
 import { generateMovieSlugFull, getTypePrefix } from "@/lib/utils";
+import { detailCache } from "@/lib/movieDetailCache";
 import {
   Button,
   Spinner,
@@ -353,7 +354,7 @@ function MovieCard({ movie }: { movie: Movie }) {
   const typeClass = TYPE_COLORS[movie.type] || "bg-white/30";
 
   return (
-    <Link to={`/${typePrefix}/${slug}`} className="group block select-none">
+    <Link to={`/${typePrefix}/${slug}`} className="group block select-none" onClick={() => detailCache.set(movie._id, movie)}>
       {/* Poster wrapper — padding-bottom trick for consistent 2:3 ratio */}
       <div className="relative w-full overflow-hidden rounded-xl" style={{ paddingBottom: "150%" }}>
         <img
