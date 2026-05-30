@@ -3,12 +3,6 @@ import React from "react";
 import { movieApi } from "@/api/movieApi";
 import type { Movie } from "@/types/index";
 import {
-  Table,
-  TableHeader,
-  TableColumn,
-  TableBody,
-  TableRow,
-  TableCell,
   Button,
   Input,
   Modal,
@@ -27,7 +21,7 @@ import {
 import {
   Edit, Trash2, Lock, LayoutDashboard, ExternalLink, Plus, X,
   Wand2, Search, RefreshCw, FileText, Cpu, ChevronDown, ChevronUp,
-  Save, CheckCircle, AlertTriangle, GitMerge
+  Save, CheckCircle, AlertTriangle, GitMerge, Layers
 } from "lucide-react";
 
 export default function AdminPage() {
@@ -66,6 +60,13 @@ export default function AdminPage() {
   const [tmdbCandidates, setTmdbCandidates] = useState<any[]>([]);
   const [tmdbPickerOpen, setTmdbPickerOpen] = useState(false);
   const [tmdbPickerLoading, setTmdbPickerLoading] = useState(false);
+
+  // Episode bulk deletion state (in edit modal)
+  const [epDeleteMode, setEpDeleteMode] = useState<'single' | 'range'>('single');
+  const [epDeleteSingle, setEpDeleteSingle] = useState('');
+  const [epDeleteFrom, setEpDeleteFrom] = useState('');
+  const [epDeleteTo, setEpDeleteTo] = useState('');
+  const [epDeleteSeason, setEpDeleteSeason] = useState('');
 
   useEffect(() => {
     const checkAuth = async () => {
@@ -212,6 +213,53 @@ export default function AdminPage() {
     } catch (error: any) {
       alert(error.response?.data?.message || "Update failed");
     }
+  };
+
+  const handleDeleteEpisodes = () => {
+    if (!selectedMovie) return;
+    const season = epDeleteSeason.trim() ? Number(epDeleteSeason) : null;
+    let newLinks = [...(selectedMovie.links || [])];
+
+    // episode field may be stored as string OR number — normalise both
+    const epNum = (l: any) => {
+      const v = l.episode;
+      if (v === null || v === undefined || v === '') return null;
+      const n = Number(v);
+      return isNaN(n) ? null : n;
+    };
+    const seasonNum = (l: any) => {
+      const v = l.season;
+      if (v === null || v === undefined || v === '') return null;
+      const n = Number(v);
+      return isNaN(n) ? null : n;
+    };
+
+    if (epDeleteMode === 'single') {
+      const ep = Number(epDeleteSingle);
+      if (!epDeleteSingle.trim() || isNaN(ep)) return alert("Enter a valid episode number.");
+      newLinks = newLinks.filter(l => {
+        const linkEp = epNum(l);
+        if (linkEp === null) return true; // no episode field — keep
+        const matchSeason = season === null || seasonNum(l) === season;
+        return !(matchSeason && linkEp === ep);
+      });
+    } else {
+      const from = Number(epDeleteFrom), to = Number(epDeleteTo);
+      if (!epDeleteFrom.trim() || !epDeleteTo.trim() || isNaN(from) || isNaN(to) || from > to)
+        return alert("Enter a valid range (From ≤ To).");
+      newLinks = newLinks.filter(l => {
+        const linkEp = epNum(l);
+        if (linkEp === null) return true; // no episode field — keep
+        const matchSeason = season === null || seasonNum(l) === season;
+        return !(matchSeason && linkEp >= from && linkEp <= to);
+      });
+    }
+
+    const removed = (selectedMovie.links?.length || 0) - newLinks.length;
+    if (removed === 0) return alert("No links matched. Check episode/season numbers. Tip: check the Episode field in each link card below to verify the stored value.");
+    if (!window.confirm(`Remove ${removed} link(s)? This cannot be undone.`)) return;
+    setSelectedMovie({ ...selectedMovie, links: newLinks });
+    setEpDeleteSingle(''); setEpDeleteFrom(''); setEpDeleteTo('');
   };
 
   const addLink = () => {
@@ -478,24 +526,24 @@ export default function AdminPage() {
   return (
     <div className="pt-24 pb-20 bg-[#0a0a0a] min-h-screen">
     <div className="container mx-auto px-4">
-    <div className="flex justify-between items-center mb-10">
-    <div className="flex items-center gap-4">
-    <div className="w-12 h-12 rounded-xl bg-white/5 border border-white/10 flex items-center justify-center">
-    <LayoutDashboard className="w-6 h-6 text-white/60" />
+    <div className="flex flex-col gap-4 mb-8 sm:flex-row sm:justify-between sm:items-center">
+    <div className="flex items-center gap-3">
+    <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl bg-white/5 border border-white/10 flex items-center justify-center shrink-0">
+    <LayoutDashboard className="w-5 h-5 sm:w-6 sm:h-6 text-white/60" />
     </div>
     <div>
-    <h1 className="text-2xl font-display tracking-widest text-white">CONTENT MANAGER</h1>
+    <h1 className="text-xl sm:text-2xl font-display tracking-widest text-white">CONTENT MANAGER</h1>
     <p className="text-white/40 text-xs uppercase tracking-tighter">Total Items: {movies.length}</p>
     </div>
     </div>
-    <div className="flex items-center gap-3">
-    <Button variant="flat" isLoading={bulkRunning} onPress={handleBulkUpdate} startContent={!bulkRunning && <RefreshCw className="w-4 h-4" />} className="text-white/40 hover:text-brand border border-white/10 bg-white/5 text-xs">
-    {bulkRunning ? "Updating…" : "Bulk Fix Descriptions"}
+    <div className="flex items-center gap-2 flex-wrap">
+    <Button variant="flat" isLoading={bulkRunning} onPress={handleBulkUpdate} startContent={!bulkRunning && <RefreshCw className="w-3.5 h-3.5" />} className="text-white/40 hover:text-brand border border-white/10 bg-white/5 text-xs h-8 px-3">
+    {bulkRunning ? "Updating…" : "Bulk Fix"}
     </Button>
-    <Button variant="flat" isLoading={fixRunning} onPress={handleFixLinkTypes} startContent={!fixRunning && <span className="text-sm">🔧</span>} className="text-white/40 hover:text-brand border border-white/10 bg-white/5 text-xs">
-    {fixRunning ? "Fixing…" : "Fix Link Types"}
+    <Button variant="flat" isLoading={fixRunning} onPress={handleFixLinkTypes} startContent={!fixRunning && <span className="text-xs">🔧</span>} className="text-white/40 hover:text-brand border border-white/10 bg-white/5 text-xs h-8 px-3">
+    {fixRunning ? "Fixing…" : "Fix Types"}
     </Button>
-    <Button variant="flat" onPress={() => { localStorage.removeItem("admin_pass"); setIsLoggedIn(false); }} className="text-white/40 hover:text-red-400">Logout</Button>
+    <Button variant="flat" onPress={() => { localStorage.removeItem("admin_pass"); setIsLoggedIn(false); }} className="text-white/40 hover:text-red-400 text-xs h-8 px-3">Logout</Button>
     </div>
     </div>
 
@@ -523,12 +571,12 @@ export default function AdminPage() {
       </div>
     )}
 
-    <div className="flex gap-2 mb-8 p-1 bg-white/5 border border-white/10 rounded-xl w-fit">
-    <button onPointerDown={() => setActiveTab("library")} className={`flex items-center gap-2 px-5 py-2 rounded-lg text-sm font-bold transition-all ${activeTab === "library" ? "bg-brand text-white shadow" : "text-white/40 hover:text-white/70"}`}>
+    <div className="flex gap-1.5 mb-6 p-1 bg-white/5 border border-white/10 rounded-xl w-full sm:w-fit">
+    <button type="button" onPointerDown={() => setActiveTab("library")} className={`flex items-center justify-center gap-2 flex-1 sm:flex-none px-4 py-2 rounded-lg text-sm font-bold transition-all ${activeTab === "library" ? "bg-brand text-white shadow" : "text-white/40 hover:text-white/70"}`}>
     <LayoutDashboard className="w-4 h-4" /> Library
     </button>
-    <button onPointerDown={() => setActiveTab("manual-parser")} className={`flex items-center gap-2 px-5 py-2 rounded-lg text-sm font-bold transition-all ${activeTab === "manual-parser" ? "bg-brand text-white shadow" : "text-white/40 hover:text-white/70"}`}>
-    <FileText className="w-4 h-4" /> Manual Parser
+    <button type="button" onPointerDown={() => setActiveTab("manual-parser")} className={`flex items-center justify-center gap-2 flex-1 sm:flex-none px-4 py-2 rounded-lg text-sm font-bold transition-all ${activeTab === "manual-parser" ? "bg-brand text-white shadow" : "text-white/40 hover:text-white/70"}`}>
+    <FileText className="w-4 h-4" /> Parser
     </button>
     </div>
 
@@ -561,38 +609,28 @@ export default function AdminPage() {
       const filtered = movies;
       return (
         <>
-        <Table aria-label="Movie management table" classNames={{ base: "bg-white/5 border border-white/10 rounded-2xl overflow-hidden", header: "bg-white/10", th: "bg-transparent text-white/40 text-[11px] uppercase tracking-widest h-14 border-b border-white/10", td: "text-white/80 py-4" }}>
-        <TableHeader>
-        <TableColumn>MOVIE / SERIES</TableColumn>
-        <TableColumn>YEAR</TableColumn>
-        <TableColumn>TYPE</TableColumn>
-        <TableColumn>LINKS</TableColumn>
-        <TableColumn>ADDED ON</TableColumn>
-        <TableColumn align="center">ACTIONS</TableColumn>
-        </TableHeader>
-        <TableBody loadingContent={<div>loading...</div>} isLoading={loading}>
-        {filtered.map((movie) => (
-          <TableRow key={movie._id} className="border-b border-white/5 last:border-0 hover:bg-white/[0.02] transition-colors">
-          <TableCell>
-          <div className="flex items-center gap-3">
-          <img src={movie.poster} className="w-10 h-14 object-cover rounded-md border border-white/10" alt="" />
-          <span className="font-bold text-sm">{movie.title}</span>
+        {/* Mobile-first card list — replaces desktop-only Table */}
+        <div className="space-y-2">
+        {loading && <div className="text-center py-10 text-white/30 text-sm">Loading…</div>}
+        {!loading && filtered.map((movie) => (
+          <div key={movie._id} className="flex items-center gap-3 p-3 bg-white/5 border border-white/10 rounded-xl hover:border-white/20 transition-all">
+          <img src={movie.poster || ""} className="w-9 h-[52px] object-cover rounded-lg border border-white/10 shrink-0" alt="" />
+          <div className="flex-1 min-w-0">
+          <p className="font-bold text-sm text-white truncate">{movie.title}</p>
+          <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+          <span className="text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-white/10 text-white/50">{movie.type}</span>
+          <span className="text-[10px] text-white/30">{movie.year}</span>
+          <span className="text-[10px] text-white/25">{movie.links?.length || 0} links</span>
+          <span className="text-[10px] text-white/20 hidden sm:inline">{new Date(movie.addedAt).toLocaleDateString()}</span>
           </div>
-          </TableCell>
-          <TableCell>{movie.year}</TableCell>
-          <TableCell><span className="text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded bg-white/10">{movie.type}</span></TableCell>
-          <TableCell>{movie.links?.length || 0} Links</TableCell>
-          <TableCell className="text-white/30 text-xs">{new Date(movie.addedAt).toLocaleDateString()}</TableCell>
-          <TableCell>
-          <div className="flex gap-2 justify-center">
-          <Button isIconOnly variant="flat" size="sm" onPress={() => handleEdit(movie)} className="bg-white/5 hover:bg-blue-500/20 text-blue-400"><Edit className="w-4 h-4" /></Button>
-          <Button isIconOnly variant="flat" size="sm" onPress={() => handleDelete(movie._id)} className="bg-white/5 hover:bg-red-500/20 text-red-400"><Trash2 className="w-4 h-4" /></Button>
           </div>
-          </TableCell>
-          </TableRow>
+          <div className="flex gap-1.5 shrink-0">
+          <Button isIconOnly variant="flat" size="sm" onPress={() => handleEdit(movie)} className="bg-white/5 hover:bg-blue-500/20 text-blue-400 w-8 h-8 min-w-0"><Edit className="w-3.5 h-3.5" /></Button>
+          <Button isIconOnly variant="flat" size="sm" onPress={() => handleDelete(movie._id)} className="bg-white/5 hover:bg-red-500/20 text-red-400 w-8 h-8 min-w-0"><Trash2 className="w-3.5 h-3.5" /></Button>
+          </div>
+          </div>
         ))}
-        </TableBody>
-        </Table>
+        </div>
         {!loading && searchQuery.trim() && filtered.length === 0 && (
           <div className="flex flex-col items-center justify-center py-16 text-center">
           <p className="text-white/30 text-sm">No results for <span className="text-white/60 font-bold">&ldquo;{searchQuery}&rdquo;</span></p>
@@ -971,7 +1009,7 @@ export default function AdminPage() {
     )}
 
     {/* Existing Edit Modal */}
-    <Modal isOpen={isOpen} onOpenChange={onOpenChange} size="4xl" scrollBehavior="inside" classNames={{ base: "bg-[#111] border border-white/10", header: "border-b border-white/5 pb-4", footer: "border-t border-white/5 pt-4" }}>
+    <Modal isOpen={isOpen} onOpenChange={(open) => { if (!open) { setEpDeleteSingle(''); setEpDeleteFrom(''); setEpDeleteTo(''); setEpDeleteSeason(''); } onOpenChange(open); }} size="4xl" scrollBehavior="inside" classNames={{ base: "bg-[#111] border border-white/10 mx-2 sm:mx-auto", header: "border-b border-white/5 pb-4", footer: "border-t border-white/5 pt-4" }}>
     <ModalContent>
     {(onClose) => (
       <>
@@ -986,7 +1024,7 @@ export default function AdminPage() {
         <Button size="sm" className="bg-brand text-white font-bold shrink-0 px-4" isLoading={tmdbLoading} onPress={handleTmdbAutofill}>Auto-fill</Button>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6">
         <div className="space-y-4">
         <Input label="Title" variant="bordered" value={selectedMovie.title} onValueChange={(v) => setSelectedMovie({...selectedMovie, title: v})} />
         <Input label="Original Title" variant="bordered" placeholder="e.g. 呪術廻戦 or Parasite Korean title" value={selectedMovie.originalTitle || ""} onValueChange={(v) => setSelectedMovie({...selectedMovie, originalTitle: v})} />
@@ -1034,6 +1072,42 @@ export default function AdminPage() {
         <h3 className="text-white font-bold text-sm uppercase tracking-widest">Download Links</h3>
         <Button size="sm" color="primary" variant="flat" startContent={<Plus className="w-4 h-4"/>} onPress={addLink}>Add Link</Button>
         </div>
+
+        {/* ── Episode Deletion Panel ─────────────────────────────────────── */}
+        <div className="p-3 rounded-xl bg-red-500/5 border border-red-500/20 space-y-3">
+        <div className="flex items-center gap-2">
+        <Layers className="w-4 h-4 text-red-400 shrink-0" />
+        <p className="text-xs font-bold uppercase tracking-widest text-red-400">Delete Episodes by Number</p>
+        </div>
+        <div className="flex gap-2">
+        <button type="button" onPointerDown={(e) => { e.preventDefault(); setEpDeleteMode('single'); }} className={`flex-1 py-1.5 rounded-lg text-xs font-bold border transition-all ${epDeleteMode === 'single' ? 'bg-red-500/20 border-red-500/50 text-red-300' : 'bg-white/5 border-white/10 text-white/40'}`}>Single</button>
+        <button type="button" onPointerDown={(e) => { e.preventDefault(); setEpDeleteMode('range'); }} className={`flex-1 py-1.5 rounded-lg text-xs font-bold border transition-all ${epDeleteMode === 'range' ? 'bg-red-500/20 border-red-500/50 text-red-300' : 'bg-white/5 border-white/10 text-white/40'}`}>Range</button>
+        </div>
+        <div className="flex gap-2 items-end flex-wrap">
+        <div className="flex-1 min-w-[80px]">
+        <Input label="Season (optional)" size="sm" variant="underlined" type="number" placeholder="all" value={epDeleteSeason} onValueChange={setEpDeleteSeason} classNames={{ input: "text-white/70 text-sm" }} />
+        </div>
+        {epDeleteMode === 'single' ? (
+          <div className="flex-1 min-w-[80px]">
+          <Input label="Episode #" size="sm" variant="underlined" type="number" placeholder="e.g. 5" value={epDeleteSingle} onValueChange={setEpDeleteSingle} classNames={{ input: "text-white/70 text-sm" }} />
+          </div>
+        ) : (
+          <>
+          <div className="flex-1 min-w-[70px]">
+          <Input label="From Ep" size="sm" variant="underlined" type="number" placeholder="e.g. 10" value={epDeleteFrom} onValueChange={setEpDeleteFrom} classNames={{ input: "text-white/70 text-sm" }} />
+          </div>
+          <div className="flex-1 min-w-[70px]">
+          <Input label="To Ep" size="sm" variant="underlined" type="number" placeholder="e.g. 15" value={epDeleteTo} onValueChange={setEpDeleteTo} classNames={{ input: "text-white/70 text-sm" }} />
+          </div>
+          </>
+        )}
+        <Button size="sm" className="bg-red-600 text-white font-bold shrink-0 h-8 px-4" onPress={handleDeleteEpisodes}>
+        Delete
+        </Button>
+        </div>
+        <p className="text-[10px] text-white/25">Matches links by episode number. Leave season blank to delete across all seasons. Changes apply after Save.</p>
+        </div>
+
         <div className="space-y-3 max-h-[400px] overflow-y-auto pr-2 custom-scrollbar">
         {selectedMovie.links.map((link, idx) => (
           <div key={idx} className="p-3 bg-white/5 rounded-xl border border-white/10 space-y-3 relative">
@@ -1046,12 +1120,13 @@ export default function AdminPage() {
           )}
           <Input label="Label" size="sm" variant="underlined" value={link.label} onValueChange={(v) => updateLink(idx, "label", v)} />
           <Input label="URL" size="sm" variant="underlined" value={link.url} onValueChange={(v) => updateLink(idx, "url", v)} startContent={<ExternalLink className="w-3 h-3 text-white/20" />} />
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-2 gap-2">
           <Input label="Quality" size="sm" variant="underlined" value={link.quality || ""} onValueChange={(v) => updateLink(idx, "quality", v)} />
           <Input label="Size" size="sm" variant="underlined" value={link.size || ""} onValueChange={(v) => updateLink(idx, "size", v)} />
           </div>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-3 gap-2">
           <Input label="Season" size="sm" type="number" variant="underlined" value={String(link.season || "")} onValueChange={(v) => updateLink(idx, "season", v ? Number(v) : null)} />
+          <Input label="Episode" size="sm" type="number" variant="underlined" value={String(link.episode || "")} onValueChange={(v) => updateLink(idx, "episode", v ? Number(v) : null)} />
           <Input label="Filename" size="sm" variant="underlined" value={link.filename || ""} onValueChange={(v) => updateLink(idx, "filename", v)} />
           </div>
           </div>
