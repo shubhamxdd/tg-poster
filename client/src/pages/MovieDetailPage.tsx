@@ -695,7 +695,7 @@ function SeasonContent({
       const qualities = epLinks.map(l => l.quality).filter(Boolean).join(" \u00b7 ");
       return (
         <div key={groupKey} className="rounded-2xl border border-white/8 overflow-hidden">
-        <button type="button" onClick={() => onToggleEpisode(groupKey)} className="w-full flex items-center justify-between gap-4 px-5 py-4 bg-[#111215] hover:bg-[#16181C] transition-colors group">
+        <button type="button" onPointerDown={(e) => { e.preventDefault(); onToggleEpisode(groupKey); }} className="w-full flex items-center justify-between gap-4 px-5 py-4 bg-[#111215] hover:bg-[#16181C] transition-colors group">
         <div className="flex items-center gap-3 min-w-0">
         <div className="w-10 h-10 rounded-xl bg-brand/10 border border-brand/20 flex items-center justify-center shrink-0 group-hover:bg-brand/20 transition-colors">
         <Download className="w-4 h-4 text-brand" />
