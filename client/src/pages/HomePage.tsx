@@ -119,19 +119,21 @@ export default function HomePage() {
     }
   }, [loading, navigationType]);
 
-  // Debounced Search Effect
+  // Clear local search input when URL has no search param (e.g. navbar home press)
   useEffect(() => {
-    const timer = setTimeout(() => {
-      if (searchInput !== (searchParams.get("search") || "")) {
-        const newParams = new URLSearchParams(searchParams);
-        if (searchInput) newParams.set("search", searchInput);
-        else newParams.delete("search");
-        newParams.set("page", "1");
-        setSearchParams(newParams);
-      }
-    }, 500);
-    return () => clearTimeout(timer);
-  }, [searchInput]);
+    if (!searchParams.get("search")) setSearchInput("");
+  }, [searchParams]);
+
+  // Commit search only on Enter or Search button press
+  const commitSearch = () => {
+    const current = searchParams.get("search") || "";
+    if (searchInput === current) return;
+    const newParams = new URLSearchParams(searchParams);
+    if (searchInput.trim()) newParams.set("search", searchInput.trim());
+    else newParams.delete("search");
+    newParams.set("page", "1");
+    setSearchParams(newParams);
+  };
 
   const updateParam = (key: string, value: string) => {
     const newParams = new URLSearchParams(searchParams);
@@ -169,31 +171,42 @@ export default function HomePage() {
       <div className="container mx-auto px-4 md:px-8">
         
         {/* Control Bar */}
-        <div className="flex flex-col lg:flex-row gap-4 mb-10 items-end lg:items-center">
-          <div className="w-full lg:max-w-md">
+        <div className="flex flex-col gap-3 mb-8">
+
+          {/* Search row */}
+          <div className="flex gap-2">
             <Input
               placeholder="Search movies, series..."
               value={searchInput}
               onValueChange={setSearchInput}
+              onKeyDown={(e) => { if (e.key === "Enter") commitSearch(); }}
               startContent={<Search className="text-white/30 w-4 h-4" />}
-              className="bg-white/5 border-white/10"
+              className="flex-1"
               classNames={{
-                inputWrapper: "bg-white/5 border border-white/10 group-data-[focus=true]:border-brand/50 h-12",
+                inputWrapper: "bg-white/5 border border-white/10 group-data-[focus=true]:border-brand/50 h-11",
                 input: "text-sm",
               }}
             />
+            <Button
+              onPress={commitSearch}
+              className="bg-brand text-white font-bold h-11 px-5 shrink-0 rounded-xl"
+            >
+              <Search className="w-4 h-4 sm:hidden" />
+              <span className="hidden sm:inline">Search</span>
+            </Button>
           </div>
 
-          <div className="flex flex-wrap gap-3 w-full lg:w-auto">
+          {/* Filters row */}
+          <div className="flex gap-2 flex-wrap items-center">
             <Select
               placeholder="Type"
               selectedKeys={[searchParams.get("type") || "all"]}
               onSelectionChange={(keys) => updateParam("type", Array.from(keys)[0] as string)}
-              className="w-32"
+              className="w-[calc(50%-4px)] sm:w-32"
               size="sm"
               startContent={<Filter className="w-3 h-3 text-white/40" />}
               classNames={{
-                trigger: "bg-white/5 border border-white/10 h-12",
+                trigger: "bg-white/5 border border-white/10 h-10",
                 value: "text-xs font-semibold text-white/70",
               }}
             >
@@ -207,10 +220,10 @@ export default function HomePage() {
               placeholder="Genre"
               selectedKeys={[searchParams.get("genre") || "all"]}
               onSelectionChange={(keys) => updateParam("genre", Array.from(keys)[0] as string)}
-              className="w-40"
+              className="w-[calc(50%-4px)] sm:w-36"
               size="sm"
               classNames={{
-                trigger: "bg-white/5 border border-white/10 h-12",
+                trigger: "bg-white/5 border border-white/10 h-10",
                 value: "text-xs font-semibold text-white/70",
               }}
             >
@@ -224,11 +237,11 @@ export default function HomePage() {
               placeholder="Sort By"
               selectedKeys={[searchParams.get("sortBy") || "addedAt"]}
               onSelectionChange={(keys) => updateParam("sortBy", Array.from(keys)[0] as string)}
-              className="w-44"
+              className="w-full sm:w-44"
               size="sm"
               startContent={<SortAsc className="w-3 h-3 text-white/40" />}
               classNames={{
-                trigger: "bg-white/5 border border-white/10 h-12",
+                trigger: "bg-white/5 border border-white/10 h-10",
                 value: "text-xs font-semibold text-white/70",
               }}
             >
@@ -245,9 +258,9 @@ export default function HomePage() {
                   setSearchInput("");
                   setSearchParams(new URLSearchParams());
                 }}
-                className="text-white/40 text-xs h-12 hover:text-white"
+                className="text-white/40 text-xs h-10 hover:text-white px-3"
               >
-                Clear Filters
+                Clear
               </Button>
             )}
           </div>
