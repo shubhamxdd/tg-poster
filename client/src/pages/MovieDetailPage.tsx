@@ -76,6 +76,20 @@ export default function MovieDetailPage() {
     window.scrollTo({ top: 0, behavior: "instant" });
   }, []);
 
+  // Update browser tab title when movie data is available
+  useEffect(() => {
+    if (movie?.title) {
+      const year = movie.year ? ` (${movie.year})` : "";
+      document.title = `${movie.title}${year} — CineVault`;
+    } else {
+      document.title = "CineVault — Download Movies, Series & Anime";
+    }
+    // Reset to default on unmount
+    return () => {
+      document.title = "CineVault — Download Movies, Series & Anime";
+    };
+  }, [movie?.title, movie?.year]);
+
   useEffect(() => {
     if (!id) return; // no id = nothing to fetch, don't show spinner
 
