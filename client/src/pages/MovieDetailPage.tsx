@@ -38,6 +38,17 @@ import {
 
 import { detailCache } from "@/lib/movieDetailCache";
 
+/** Updates the browser tab title from movie data.
+ *  Restores CineVault default on unmount. */
+function useMeta(movie: import("@/types/index").Movie | null) {
+  useEffect(() => {
+    if (!movie) return;
+    const prev = document.title;
+    document.title = `${movie.title}${movie.year ? ` (${movie.year})` : ""} — CineVault`;
+    return () => { document.title = prev; };
+  }, [movie]);
+}
+
 export default function MovieDetailPage() {
   const { slug } = useParams<{ slug: string }>();
   const navigate = useNavigate();
@@ -52,6 +63,9 @@ export default function MovieDetailPage() {
   const [fetchError, setFetchError] = useState(false);
   const [wishlist, setWishlist] = useState(false);
   const [expandedEpisodes, setExpandedEpisodes] = useState<Record<string, boolean>>({});
+
+  // Inject page title and OG meta tags from movie data
+  useMeta(movie);
 
   // True when there's a real history entry behind us (user navigated from within the app)
   const canGoBack = (window.history.state?.idx ?? 0) > 0;
@@ -75,20 +89,6 @@ export default function MovieDetailPage() {
   useEffect(() => {
     window.scrollTo({ top: 0, behavior: "instant" });
   }, []);
-
-  // Update browser tab title when movie data is available
-  useEffect(() => {
-    if (movie?.title) {
-      const year = movie.year ? ` (${movie.year})` : "";
-      document.title = `${movie.title}${year} — CineVault`;
-    } else {
-      document.title = "CineVault — Download Movies, Series & Anime";
-    }
-    // Reset to default on unmount
-    return () => {
-      document.title = "CineVault — Download Movies, Series & Anime";
-    };
-  }, [movie?.title, movie?.year]);
 
   useEffect(() => {
     if (!id) return; // no id = nothing to fetch, don't show spinner
@@ -729,11 +729,13 @@ function SeasonContent({
         <ChevronDown className={`w-4 h-4 text-white/30 transition-transform duration-200 ${isOpen ? "rotate-180" : ""}`} />
         </div>
         </button>
-        {isOpen && (
-          <div className="border-t border-white/8 bg-[#0D0D0F] p-3 space-y-2">
+        {/* Always in DOM — CSS height toggle prevents scroll jump on collapse */}
+        <div
+          style={{ display: isOpen ? undefined : "none" }}
+          className="border-t border-white/8 bg-[#0D0D0F] p-3 space-y-2"
+        >
           {epLinks.map((link, idx) => <DownloadRow key={idx} link={link} onDownload={onDownload} movieAudio={movieAudio} />)}
-          </div>
-        )}
+        </div>
         </div>
       );
     })}
