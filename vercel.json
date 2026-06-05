@@ -10,6 +10,18 @@
       "destination": "/api/index.js"
     },
     {
+      "source": "/movie/:slug",
+      "destination": "/api/index.js"
+    },
+    {
+      "source": "/series/:slug",
+      "destination": "/api/index.js"
+    },
+    {
+      "source": "/anime/:slug",
+      "destination": "/api/index.js"
+    },
+    {
       "source": "/((?!api|_next|favicon\\.svg|og-image\\.png|assets|.*\\..*).*)",
       "destination": "/index.html"
     }
