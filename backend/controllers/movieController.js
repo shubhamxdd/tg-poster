@@ -186,12 +186,20 @@ export const getMovies = async (req, res) => {
     if (sortBy === 'rating') sortQuery = { rating: -1, updatedAt: -1 };
     if (sortBy === 'title')  sortQuery = { title: 1 };
 
-    const [movies, count] = await Promise.all([
-      Movie.find(baseFilter).sort(sortQuery).skip((pageNum - 1) * limitNum).limit(limitNum).lean(),
-      Movie.countDocuments(baseFilter),
+    // Pinned items always appear first on page 1, exempt from sort/pagination
+    const pinnedFilter = { ...baseFilter, pinned: true };
+    const regularFilter = { ...baseFilter, pinned: { $ne: true } };
+
+    const [pinnedMovies, regularMovies, regularCount] = await Promise.all([
+      pageNum === 1 ? Movie.find(pinnedFilter).sort({ updatedAt: -1 }).lean() : Promise.resolve([]),
+      Movie.find(regularFilter).sort(sortQuery).skip((pageNum - 1) * limitNum).limit(limitNum).lean(),
+      Movie.countDocuments(regularFilter),
     ]);
 
-    res.json({ movies, totalPages: Math.ceil(count / limitNum), currentPage: pageNum, total: count });
+    const movies = pageNum === 1 ? [...pinnedMovies, ...regularMovies] : regularMovies;
+    const count = regularCount + (await Movie.countDocuments(pinnedFilter));
+
+    res.json({ movies, totalPages: Math.ceil(regularCount / limitNum), currentPage: pageNum, total: count });
   } catch (error) {
     console.error('[getMovies]', error.message);
     res.status(500).json({ message: error.message });
@@ -253,7 +261,7 @@ export const deleteMovie = async (req, res) => {
 
 export const updateMovie = async (req, res) => {
   try {
-    const movie = await Movie.findByIdAndUpdate(req.params.id, req.body, { new: true });
+    const movie = await Movie.findByIdAndUpdate(req.params.id, req.body, { returnDocument: 'after' });
     if (!movie) return res.status(404).json({ message: 'Movie not found' });
     res.json({ message: 'Movie updated successfully', movie });
   } catch (error) {
@@ -339,6 +347,37 @@ export const bulkUpdateDescriptions = async (req, res) => {
  * GET /api/movies/admin/tmdb-search?title=&type=&year=
  * Returns up to 8 TMDB candidate results for the admin to pick from.
  */
+export const getPinned = async (req, res) => {
+  try {
+    const movies = await Movie.find({ pinned: true }).sort({ updatedAt: -1 }).lean();
+    res.json(movies);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
+export const pinMovie = async (req, res) => {
+  try {
+    const count = await Movie.countDocuments({ pinned: true });
+    if (count >= 10) return res.status(400).json({ message: 'Pin limit reached. Max 10 pinned items.' });
+    const movie = await Movie.findByIdAndUpdate(req.params.id, { pinned: true }, { returnDocument: 'after' });
+    if (!movie) return res.status(404).json({ message: 'Not found' });
+    res.json(movie);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
+export const unpinMovie = async (req, res) => {
+  try {
+    const movie = await Movie.findByIdAndUpdate(req.params.id, { pinned: false }, { returnDocument: 'after' });
+    if (!movie) return res.status(404).json({ message: 'Not found' });
+    res.json(movie);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
 export const searchTmdbCandidates = async (req, res) => {
   const { title, type = 'movie', year } = req.query;
   if (!title) return res.status(400).json({ message: 'title is required' });

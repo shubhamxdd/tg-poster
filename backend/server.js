@@ -1,4 +1,10 @@
 import express from 'express';
+
+// Silence verbose logs in production — errors are always kept
+if (process.env.NODE_ENV === 'production') {
+  console.log = () => {};
+  console.warn = () => {};
+}
 import dotenv from 'dotenv';
 import cors from 'cors';
 import connectDB from './config/db.js';

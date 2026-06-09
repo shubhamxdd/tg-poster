@@ -156,4 +156,19 @@ export const movieApi = {
     });
     return response.data as { success: boolean; action: string; movie: any; appended?: number; replaced?: number; duplicatesSkipped?: number };
   },
+
+  getPinned: async (password: string) => {
+    const response = await api.get('/movies/admin/pinned', { headers: { 'x-admin-password': password } });
+    return response.data as any[];
+  },
+
+  pinMovie: async (id: string, password: string) => {
+    const response = await api.put(`/movies/admin/${id}/pin`, {}, { headers: { 'x-admin-password': password } });
+    return response.data;
+  },
+
+  unpinMovie: async (id: string, password: string) => {
+    const response = await api.put(`/movies/admin/${id}/unpin`, {}, { headers: { 'x-admin-password': password } });
+    return response.data;
+  },
 };

@@ -3,4 +3,3 @@ node_modules
 .vercel
 .env*.local
 /graphify-out
-/dist

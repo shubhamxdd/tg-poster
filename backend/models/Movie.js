@@ -77,6 +77,11 @@ const movieSchema = new mongoose.Schema({
     type: String,
     index: true,
   },
+  pinned: {
+    type: Boolean,
+    default: false,
+    index: true,
+  },
   addedAt: {
     type: Date,
     default: Date.now,

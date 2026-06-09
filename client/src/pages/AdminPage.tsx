@@ -21,7 +21,7 @@ import {
 import {
   Edit, Trash2, Lock, LayoutDashboard, ExternalLink, Plus, X,
   Wand2, Search, RefreshCw, FileText, Cpu, ChevronDown, ChevronUp,
-  Save, CheckCircle, AlertTriangle, GitMerge, Layers
+  Save, CheckCircle, AlertTriangle, GitMerge, Layers, Pin, PinOff
 } from "lucide-react";
 
 export default function AdminPage() {
@@ -41,7 +41,7 @@ export default function AdminPage() {
   const [fixSummary, setFixSummary] = useState<{ updated: number; skipped: number; total: number } | null>(null);
   const { isOpen, onOpen, onOpenChange } = useDisclosure();
 
-  const [activeTab, setActiveTab] = useState<"library" | "manual-parser">("library");
+  const [activeTab, setActiveTab] = useState<"library" | "manual-parser" | "pinned">("library");
   const [manualText, setManualText] = useState("");
   const [manualParsing, setManualParsing] = useState(false);
   const [manualPreview, setManualPreview] = useState<any>(null);
@@ -60,6 +60,42 @@ export default function AdminPage() {
   const [tmdbCandidates, setTmdbCandidates] = useState<any[]>([]);
   const [tmdbPickerOpen, setTmdbPickerOpen] = useState(false);
   const [tmdbPickerLoading, setTmdbPickerLoading] = useState(false);
+
+  // Pinned tab state
+  const [pinnedMovies, setPinnedMovies] = useState<any[]>([]);
+  const [pinnedLoading, setPinnedLoading] = useState(false);
+  const [pinSearch, setPinSearch] = useState('');
+  const [pinning, setPinning] = useState<string | null>(null);
+
+  const loadPinned = async () => {
+    setPinnedLoading(true);
+    try {
+      const data = await movieApi.getPinned(password);
+      setPinnedMovies(data);
+    } catch { } finally { setPinnedLoading(false); }
+  };
+
+  const handlePin = async (id: string) => {
+    setPinning(id);
+    try {
+      await movieApi.pinMovie(id, password);
+      setPinnedMovies(prev => {
+        const movie = movies.find(m => m._id === id);
+        if (movie && !prev.find(p => p._id === id)) return [...prev, { ...movie, pinned: true }];
+        return prev;
+      });
+    } catch (e: any) { alert(e?.response?.data?.message || 'Failed to pin'); }
+    finally { setPinning(null); }
+  };
+
+  const handleUnpin = async (id: string) => {
+    setPinning(id);
+    try {
+      await movieApi.unpinMovie(id, password);
+      setPinnedMovies(prev => prev.filter(p => p._id !== id));
+    } catch { alert('Failed to unpin'); }
+    finally { setPinning(null); }
+  };
 
   // Episode bulk deletion state (in edit modal)
   const [epDeleteMode, setEpDeleteMode] = useState<'single' | 'range'>('single');
@@ -577,6 +613,9 @@ export default function AdminPage() {
     </button>
     <button type="button" onPointerDown={() => setActiveTab("manual-parser")} className={`flex items-center justify-center gap-2 flex-1 sm:flex-none px-4 py-2 rounded-lg text-sm font-bold transition-all ${activeTab === "manual-parser" ? "bg-brand text-white shadow" : "text-white/40 hover:text-white/70"}`}>
     <FileText className="w-4 h-4" /> Parser
+    </button>
+    <button type="button" onPointerDown={() => { setActiveTab("pinned"); loadPinned(); }} className={`flex items-center justify-center gap-2 flex-1 sm:flex-none px-4 py-2 rounded-lg text-sm font-bold transition-all ${activeTab === "pinned" ? "bg-brand text-white shadow" : "text-white/40 hover:text-white/70"}`}>
+    <Pin className="w-4 h-4" /> Pinned
     </button>
     </div>
 
@@ -1145,6 +1184,118 @@ export default function AdminPage() {
     )}
     </ModalContent>
     </Modal>
+    {/* ── Pinned Tab ─────────────────────────────────────────────────── */}
+    {activeTab === "pinned" && (
+      <div className="space-y-6">
+
+        {/* Header */}
+        <div className="flex flex-col sm:flex-row sm:items-center gap-3 justify-between">
+          <div>
+            <h2 className="text-white font-bold text-sm uppercase tracking-widest flex items-center gap-2">
+              <Pin className="w-4 h-4 text-brand" /> Pinned Content
+            </h2>
+            <p className="text-white/30 text-xs mt-1">
+              Pinned items always appear at the top of the homepage regardless of sort order. Max 10.
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className={`text-xs font-bold px-2 py-1 rounded-lg border ${pinnedMovies.length >= 10 ? "bg-red-500/10 border-red-500/30 text-red-400" : "bg-brand/10 border-brand/20 text-brand"}`}>
+              {pinnedMovies.length} / 10
+            </span>
+            <Button size="sm" variant="flat" onPress={loadPinned} isLoading={pinnedLoading} className="text-white/40 border border-white/10 bg-white/5 text-xs h-8 px-3">
+              Refresh
+            </Button>
+          </div>
+        </div>
+
+        {/* Currently Pinned */}
+        <div className="space-y-2">
+          <p className="text-xs font-bold uppercase tracking-widest text-white/30 mb-2">Currently Pinned</p>
+          {pinnedLoading && <div className="text-center py-6 text-white/30 text-sm">Loading…</div>}
+          {!pinnedLoading && pinnedMovies.length === 0 && (
+            <div className="text-center py-8 text-white/20 text-sm rounded-xl border border-white/5 bg-white/[0.02]">
+              No pinned items. Pin movies from the library below.
+            </div>
+          )}
+          {!pinnedLoading && pinnedMovies.map((movie) => (
+            <div key={movie._id} className="flex items-center gap-3 p-3 bg-brand/5 border border-brand/20 rounded-xl">
+              <Pin className="w-3.5 h-3.5 text-brand shrink-0" />
+              <img src={movie.poster || ""} className="w-8 h-11 object-cover rounded-md border border-white/10 shrink-0" alt="" />
+              <div className="flex-1 min-w-0">
+                <p className="font-bold text-sm text-white truncate">{movie.title}</p>
+                <div className="flex items-center gap-2 mt-0.5">
+                  <span className="text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-white/10 text-white/50">{movie.type}</span>
+                  <span className="text-[10px] text-white/30">{movie.year}</span>
+                </div>
+              </div>
+              <Button
+                isIconOnly size="sm"
+                isLoading={pinning === movie._id}
+                onPress={() => handleUnpin(movie._id)}
+                className="bg-red-500/10 hover:bg-red-500/20 text-red-400 w-8 h-8 min-w-0 shrink-0"
+              >
+                <PinOff className="w-3.5 h-3.5" />
+              </Button>
+            </div>
+          ))}
+        </div>
+
+        {/* Search library to pin */}
+        <div className="space-y-2">
+          <p className="text-xs font-bold uppercase tracking-widest text-white/30 mb-2">Add from Library</p>
+          <Input
+            placeholder="Search to find and pin a title..."
+            value={pinSearch}
+            onValueChange={setPinSearch}
+            startContent={<Search className="w-4 h-4 text-white/30" />}
+            classNames={{ inputWrapper: "bg-white/5 border border-white/10 h-10", input: "text-sm" }}
+            isClearable
+            onClear={() => setPinSearch("")}
+          />
+          <div className="space-y-2 max-h-[360px] overflow-y-auto pr-1 custom-scrollbar">
+            {movies
+              .filter(m =>
+                !m.pinned &&
+                pinSearch.trim() &&
+                m.title.toLowerCase().includes(pinSearch.toLowerCase())
+              )
+              .slice(0, 20)
+              .map((movie) => {
+                const alreadyPinned = pinnedMovies.some(p => p._id === movie._id);
+                return (
+                  <div key={movie._id} className="flex items-center gap-3 p-3 bg-white/5 border border-white/10 rounded-xl hover:border-white/20 transition-all">
+                    <img src={movie.poster || ""} className="w-8 h-11 object-cover rounded-md border border-white/10 shrink-0" alt="" />
+                    <div className="flex-1 min-w-0">
+                      <p className="font-bold text-sm text-white truncate">{movie.title}</p>
+                      <div className="flex items-center gap-2 mt-0.5">
+                        <span className="text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-white/10 text-white/50">{movie.type}</span>
+                        <span className="text-[10px] text-white/30">{movie.year}</span>
+                      </div>
+                    </div>
+                    <Button
+                      isIconOnly size="sm"
+                      isDisabled={alreadyPinned || pinnedMovies.length >= 10}
+                      isLoading={pinning === movie._id}
+                      onPress={() => handlePin(movie._id)}
+                      className="bg-brand/10 hover:bg-brand/20 text-brand w-8 h-8 min-w-0 shrink-0 disabled:opacity-30"
+                    >
+                      <Pin className="w-3.5 h-3.5" />
+                    </Button>
+                  </div>
+                );
+              })}
+            {pinSearch.trim() && movies.filter(m => !m.pinned && m.title.toLowerCase().includes(pinSearch.toLowerCase())).length === 0 && (
+              <p className="text-center text-white/20 text-sm py-6">No results for "{pinSearch}"</p>
+            )}
+            {!pinSearch.trim() && (
+              <p className="text-center text-white/20 text-xs py-6">Type a title above to search the library</p>
+            )}
+          </div>
+        </div>
+
+      </div>
+    )}
+
     </div>
     </div>
   );

@@ -1,5 +1,5 @@
 import express from 'express';
-import { getMovies, getMovieById, deleteMovie, updateMovie, adminAuth, verifyAdmin, fetchFromTmdbUrl, bulkUpdateDescriptions, parseManual, saveManual, searchTmdbCandidates, fetchTmdbById, fixLinkTypes } from '../controllers/movieController.js';
+import { getMovies, getMovieById, deleteMovie, updateMovie, adminAuth, verifyAdmin, fetchFromTmdbUrl, bulkUpdateDescriptions, parseManual, saveManual, searchTmdbCandidates, fetchTmdbById, fixLinkTypes, getPinned, pinMovie, unpinMovie } from '../controllers/movieController.js';
 
 const router = express.Router();
 
@@ -11,6 +11,9 @@ router.post('/admin/bulk-update-descriptions', adminAuth, bulkUpdateDescriptions
 router.post('/admin/parse-manual', adminAuth, parseManual);
 router.post('/admin/save-manual', adminAuth, saveManual);
 router.post('/admin/fix-link-types', adminAuth, fixLinkTypes);
+router.get('/admin/pinned', adminAuth, getPinned);
+router.put('/admin/:id/pin', adminAuth, pinMovie);
+router.put('/admin/:id/unpin', adminAuth, unpinMovie);
 router.get('/:id', getMovieById);
 
 // Admin Authentication Verification
