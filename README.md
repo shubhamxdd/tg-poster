@@ -6,10 +6,11 @@ A modern, fully automated movie and series catalog website that listens to a pri
 
 -   **🤖 AI-Powered Parsing:** Uses Gemini 2.0 (via OpenRouter) to intelligently extract titles, seasons, qualities, and sizes from raw Telegram text.
 -   **📱 Real-time Sync:** Supports new messages and **edits**. Update a post in Telegram, and the site updates instantly.
--   **🔄 Smart Deduplication:** Prevents duplicate entries by checking both Telegram Message IDs and show titles/years.
--   **🔗 SEO Friendly URLs:** Uses a custom slug system (Title + Year + ID) for cleaner, more readable movie links.
+-   **🔄 Robust Deduplication:** Groups multiple posts (e.g., S01, S02) into a single entry using **TMDB ID** and title matching.
+-   **🛡️ Secure Admin Panel:** Manage content (edit/delete) via a password-protected dashboard at `/admin`.
+-   **🔍 Advanced Search & Filters:** Stackable filters for Type, Genre, and Search with multiple sorting options.
+-   **✨ Sticky Control Bar:** A modern, scroll-responsive filter bar with Glassmorphism effects.
 -   **📦 Season Tabs:** Automatically groups download links into interactive tabs by Season (Season 1, Season 2, etc.).
--   **💾 Rich Metadata:** Displays full filenames, file sizes, resolutions, and audio languages.
 -   **🖼️ Metadata Enrichment:** Automatically pulls Cast (with photos), Directors, Ratings, Runtimes, and Posters from TMDB.
 -   **🎨 Premium UI:** Built with React 19, Tailwind CSS, and **HeroUI** for a cinematic, responsive dark-mode experience.
 
@@ -43,6 +44,7 @@ A modern, fully automated movie and series catalog website that listens to a pri
     OPENROUTER_API_KEY=your_key
     TMDB_API_KEY=your_key
     WEBHOOK_SECRET=random_secret_string
+    ADMIN_PASSWORD=your_admin_panel_password
     AI_MODEL=google/gemini-2.0-flash-001
     ```
 
