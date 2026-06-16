@@ -180,26 +180,43 @@ export const getMovies = async (req, res) => {
       return res.json({ movies: paginated, totalPages: Math.ceil(total / limitNum), currentPage: pageNum, total });
     }
 
-    // ── No search — standard sorted + paginated fetch ─────────────────────
+    // ── No search — pinned always on top, then standard sorted + paginated ─
     let sortQuery = { updatedAt: -1 };
     if (sortBy === 'year')   sortQuery = { year: -1, updatedAt: -1 };
     if (sortBy === 'rating') sortQuery = { rating: -1, updatedAt: -1 };
     if (sortBy === 'title')  sortQuery = { title: 1 };
 
-    // Pinned items always appear first on page 1, exempt from sort/pagination
+    // Only inject pinned on page 1 (and only when no type/genre filter hides them)
     const pinnedFilter = { ...baseFilter, pinned: true };
-    const regularFilter = { ...baseFilter, pinned: { $ne: true } };
+    const pinnedItems  = pageNum === 1
+      ? await Movie.find(pinnedFilter).sort({ updatedAt: -1 }).lean()
+      : [];
 
-    const [pinnedMovies, regularMovies, regularCount] = await Promise.all([
-      pageNum === 1 ? Movie.find(pinnedFilter).sort({ updatedAt: -1 }).lean() : Promise.resolve([]),
-      Movie.find(regularFilter).sort(sortQuery).skip((pageNum - 1) * limitNum).limit(limitNum).lean(),
+    const pinnedCount  = pinnedItems.length;
+    const pinnedIds    = pinnedItems.map(m => m._id);
+
+    // Regular items: exclude pinned so they don't appear twice
+    const regularFilter = { ...baseFilter, _id: { $nin: pinnedIds }, pinned: { $ne: true } };
+
+    // On page 1: fill remaining slots after pinned.
+    // On page 2+: offset as if page 1 had (limitNum - pinnedCount) regular items.
+    const regularLimit = limitNum - pinnedCount;  // slots left on page 1
+    const regularSkip  = pageNum === 1
+      ? 0
+      : regularLimit + (pageNum - 2) * limitNum;  // page1 used regularLimit, each later page uses full limitNum
+
+    const [regularMovies, regularCount] = await Promise.all([
+      Movie.find(regularFilter).sort(sortQuery).skip(regularSkip).limit(pageNum === 1 ? regularLimit : limitNum).lean(),
       Movie.countDocuments(regularFilter),
     ]);
 
-    const movies = pageNum === 1 ? [...pinnedMovies, ...regularMovies] : regularMovies;
-    const count = regularCount + (await Movie.countDocuments(pinnedFilter));
+    const movies = pageNum === 1 ? [...pinnedItems, ...regularMovies] : regularMovies;
 
-    res.json({ movies, totalPages: Math.ceil(regularCount / limitNum), currentPage: pageNum, total: count });
+    // Total pages: page 1 holds (pinnedCount + regularLimit) items, rest hold limitNum each
+    const totalItems = pinnedCount + regularCount;
+    const totalPages = Math.ceil((regularCount - regularLimit) / limitNum) + 1;
+
+    res.json({ movies, totalPages: Math.max(1, totalPages), currentPage: pageNum, total: totalItems });
   } catch (error) {
     console.error('[getMovies]', error.message);
     res.status(500).json({ message: error.message });
@@ -261,7 +278,7 @@ export const deleteMovie = async (req, res) => {
 
 export const updateMovie = async (req, res) => {
   try {
-    const movie = await Movie.findByIdAndUpdate(req.params.id, req.body, { returnDocument: 'after' });
+    const movie = await Movie.findByIdAndUpdate(req.params.id, req.body, { new: true });
     if (!movie) return res.status(404).json({ message: 'Movie not found' });
     res.json({ message: 'Movie updated successfully', movie });
   } catch (error) {
@@ -347,37 +364,6 @@ export const bulkUpdateDescriptions = async (req, res) => {
  * GET /api/movies/admin/tmdb-search?title=&type=&year=
  * Returns up to 8 TMDB candidate results for the admin to pick from.
  */
-export const getPinned = async (req, res) => {
-  try {
-    const movies = await Movie.find({ pinned: true }).sort({ updatedAt: -1 }).lean();
-    res.json(movies);
-  } catch (err) {
-    res.status(500).json({ message: err.message });
-  }
-};
-
-export const pinMovie = async (req, res) => {
-  try {
-    const count = await Movie.countDocuments({ pinned: true });
-    if (count >= 10) return res.status(400).json({ message: 'Pin limit reached. Max 10 pinned items.' });
-    const movie = await Movie.findByIdAndUpdate(req.params.id, { pinned: true }, { returnDocument: 'after' });
-    if (!movie) return res.status(404).json({ message: 'Not found' });
-    res.json(movie);
-  } catch (err) {
-    res.status(500).json({ message: err.message });
-  }
-};
-
-export const unpinMovie = async (req, res) => {
-  try {
-    const movie = await Movie.findByIdAndUpdate(req.params.id, { pinned: false }, { returnDocument: 'after' });
-    if (!movie) return res.status(404).json({ message: 'Not found' });
-    res.json(movie);
-  } catch (err) {
-    res.status(500).json({ message: err.message });
-  }
-};
-
 export const searchTmdbCandidates = async (req, res) => {
   const { title, type = 'movie', year } = req.query;
   if (!title) return res.status(400).json({ message: 'title is required' });
