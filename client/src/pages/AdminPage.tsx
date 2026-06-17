@@ -66,6 +66,12 @@ export default function AdminPage() {
   const [pinnedLoading, setPinnedLoading] = useState(false);
   const [pinSearch, setPinSearch] = useState('');
   const [pinning, setPinning] = useState<string | null>(null);
+  // Pinned tab's "Add from Library" search results — queried directly from the
+  // backend so it can find ANY title, not just whatever happens to already be
+  // loaded into the Library tab's `movies` list (which is capped at 100 and
+  // driven by a totally separate search box).
+  const [pinSearchResults, setPinSearchResults] = useState<Movie[]>([]);
+  const [pinSearchLoading, setPinSearchLoading] = useState(false);
 
   const loadPinned = async () => {
     setPinnedLoading(true);
@@ -80,7 +86,7 @@ export default function AdminPage() {
     try {
       await movieApi.pinMovie(id, password);
       setPinnedMovies(prev => {
-        const movie = movies.find(m => m._id === id);
+        const movie = movies.find(m => m._id === id) || pinSearchResults.find(m => m._id === id);
         if (movie && !prev.find(p => p._id === id)) return [...prev, { ...movie, pinned: true }];
         return prev;
       });
@@ -152,6 +158,30 @@ export default function AdminPage() {
     return () => clearTimeout(timer);
   }, [searchQuery, isLoggedIn]);
 
+  // Pinned tab: search the backend directly instead of filtering whatever's
+  // already sitting in the Library tab's `movies` state.
+  useEffect(() => {
+    if (!isLoggedIn || activeTab !== "pinned") return;
+    const q = pinSearch.trim();
+    if (!q) {
+      setPinSearchResults([]);
+      setPinSearchLoading(false);
+      return;
+    }
+    setPinSearchLoading(true);
+    const timer = setTimeout(async () => {
+      try {
+        const data = await movieApi.getMovies({ search: q, limit: 20 });
+        setPinSearchResults(data.movies);
+      } catch {
+        setPinSearchResults([]);
+      } finally {
+        setPinSearchLoading(false);
+      }
+    }, 350);
+    return () => clearTimeout(timer);
+  }, [pinSearch, activeTab, isLoggedIn]);
+
   const handleDelete = async (id: string) => {
     if (!window.confirm("Are you sure you want to delete this movie?")) return;
     try {
@@ -185,6 +215,7 @@ export default function AdminPage() {
                        ...(data.runtime    && { runtime:    data.runtime }),
                        ...(data.country    && { country:    data.country }),
                        ...(data.director   && { director:   data.director }),
+                       ...(data.status     && { status:     data.status }),
                        ...(data.year       && { year:       data.year }),
                        ...(data.audio?.length && { audio: data.audio }),
                        ...(data.description && { description: data.description }),
@@ -1087,6 +1118,7 @@ export default function AdminPage() {
         <Input label="Country" variant="bordered" placeholder="e.g. USA" value={selectedMovie.country || ""} onValueChange={(v) => setSelectedMovie({...selectedMovie, country: v})} />
         <Input label="Director" variant="bordered" placeholder="e.g. Christopher Nolan" value={selectedMovie.director || ""} onValueChange={(v) => setSelectedMovie({...selectedMovie, director: v})} />
         </div>
+        <Input label="Status" variant="bordered" placeholder="e.g. Released, Ended, Returning Series" value={selectedMovie.status || ""} onValueChange={(v) => setSelectedMovie({...selectedMovie, status: v})} />
 
         <div className="space-y-3">
         <div className="flex justify-between items-center">
@@ -1253,12 +1285,11 @@ export default function AdminPage() {
             onClear={() => setPinSearch("")}
           />
           <div className="space-y-2 max-h-[360px] overflow-y-auto pr-1 custom-scrollbar">
-            {movies
-              .filter(m =>
-                !m.pinned &&
-                pinSearch.trim() &&
-                m.title.toLowerCase().includes(pinSearch.toLowerCase())
-              )
+            {pinSearchLoading && (
+              <div className="text-center py-6 text-white/30 text-sm">Searching…</div>
+            )}
+            {!pinSearchLoading && pinSearchResults
+              .filter(m => !pinnedMovies.some(p => p._id === m._id))
               .slice(0, 20)
               .map((movie) => {
                 const alreadyPinned = pinnedMovies.some(p => p._id === movie._id);
@@ -1284,7 +1315,7 @@ export default function AdminPage() {
                   </div>
                 );
               })}
-            {pinSearch.trim() && movies.filter(m => !m.pinned && m.title.toLowerCase().includes(pinSearch.toLowerCase())).length === 0 && (
+            {!pinSearchLoading && pinSearch.trim() && pinSearchResults.filter(m => !pinnedMovies.some(p => p._id === m._id)).length === 0 && (
               <p className="text-center text-white/20 text-sm py-6">No results for "{pinSearch}"</p>
             )}
             {!pinSearch.trim() && (

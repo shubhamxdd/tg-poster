@@ -123,52 +123,64 @@ export const getMovies = async (req, res) => {
 
     // ── Search ────────────────────────────────────────────────────────────
     if (search && search.trim()) {
-      const raw    = search.trim();
-      const isYear = /^\d{4}$/.test(raw);
+      const raw = search.trim();
+      const escapeRegex = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
-      if (isYear) {
-        // Pure year query — return everything from that year
-        baseFilter.year = parseInt(raw, 10);
-        const [movies, count] = await Promise.all([
-          Movie.find(baseFilter)
-            .sort({ rating: -1, updatedAt: -1 })
-            .skip((pageNum - 1) * limitNum)
-            .limit(limitNum)
-            .lean(),
-          Movie.countDocuments(baseFilter),
-        ]);
-        return res.json({ movies, totalPages: Math.ceil(count / limitNum), currentPage: pageNum, total: count });
-      }
-
-      // Tokenise — strip stopwords — require ALL tokens in title/originalTitle
+      // Tokenise — strip stopwords. Numeric tokens are ALWAYS kept regardless
+      // of length: dropping single-digit tokens used to strip sequel/franchise
+      // numbers (the "3" in "Ip Man 3", the "2" in "John Wick 2"), which made
+      // those searches match every entry in the franchise instead of just one.
       const tokens = raw.replace(/[^\w\s]/g, " ").split(/\s+/).filter(Boolean);
       const STOPWORDS = new Set(["the","a","an","of","in","on","at","to","and","or","is","it","by","as","be","my","he","she","we","do","so","if","up","vs"]);
-      const searchTokens = tokens.filter(t => t.length > 1 && !STOPWORDS.has(t.toLowerCase()));
+      const searchTokens = tokens.filter(t => /^\d+$/.test(t) || (t.length > 1 && !STOPWORDS.has(t.toLowerCase())));
       const finalTokens  = searchTokens.length > 0 ? searchTokens : tokens;
 
-      const tokenREs = finalTokens.map(t => new RegExp(t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i"));
+      const tokenREs = finalTokens.map(t => new RegExp(escapeRegex(t), "i"));
 
-      // AND: every token must match title OR originalTitle
-      baseFilter.$and = tokenREs.map(re => ({
-        $or: [
-          { title:         { $regex: re.source, $options: "i" } },
-          { originalTitle: { $regex: re.source, $options: "i" } },
-        ]
-      }));
+      // Every token must appear somewhere in title OR originalTitle
+      const titleAndFilter = {
+        $and: tokenREs.map(re => ({
+          $or: [
+            { title:         { $regex: re.source, $options: "i" } },
+            { originalTitle: { $regex: re.source, $options: "i" } },
+          ]
+        }))
+      };
+
+      // A bare 4-digit query is ambiguous — it could mean "browse this release
+      // year" (e.g. "1994") OR be the literal title of something whose name is
+      // a number (e.g. "1917", "2012", "2046"). Previously a search for "1917"
+      // ONLY filtered by release year and ignored the title entirely, so the
+      // movie literally named "1917" (released 2019) never showed up. Now we
+      // match either, and rank genuine title hits above plain year hits.
+      const isPureYear = /^\d{4}$/.test(raw);
+      const yearNum = isPureYear ? parseInt(raw, 10) : null;
+
+      if (isPureYear) {
+        baseFilter.$or = [{ year: yearNum }, titleAndFilter];
+      } else {
+        Object.assign(baseFilter, titleAndFilter);
+      }
 
       const rawResults = await Movie.find(baseFilter).lean();
 
       // Relevance scoring — title only
       const rawL     = raw.toLowerCase();
-      const phraseRE = new RegExp(finalTokens.map(t => t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("\\s+"), "i");
+      const phraseRE = new RegExp(finalTokens.map(escapeRegex).join("\\s+"), "i");
 
       const scored = rawResults.map(m => {
         const titleL = (m.title         || "").toLowerCase();
         const origL  = (m.originalTitle || "").toLowerCase();
-        let score =
-          (titleL === rawL || origL === rawL)                             ? 1000 :
-          (titleL.startsWith(rawL) || origL.startsWith(rawL))            ?  800 :
-          (phraseRE.test(m.title)  || phraseRE.test(m.originalTitle))    ?  600 : 200;
+        const allTokensHit = tokenREs.every(re => re.test(m.title || "") || re.test(m.originalTitle || ""));
+
+        let score;
+        if (titleL === rawL || origL === rawL) score = 1000;
+        else if (titleL.startsWith(rawL) || origL.startsWith(rawL)) score = 800;
+        else if (phraseRE.test(m.title) || phraseRE.test(m.originalTitle)) score = 600;
+        else if (allTokensHit) score = 200;
+        else score = 0; // only matched via the bare-year branch, no real title relevance
+
+        if (isPureYear && m.year === yearNum) score = Math.max(score, 50);
         score += parseFloat(m.rating || 0) * 2;
         return { ...m, _score: score };
       });
