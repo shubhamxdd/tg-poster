@@ -706,7 +706,12 @@ function SeasonContent({
         return <DownloadRow key={groupKey} link={epLinks[0]} onDownload={onDownload} movieAudio={movieAudio} />;
       }
       const isOpen = expandedEpisodes[groupKey] ?? false;
-      const qualities = epLinks.map(l => l.quality).filter(Boolean).join(" \u00b7 ");
+      // De-dupe qualities — multiple links can be different encodes of the
+      // same quality (e.g. two separate 1080p sources), which previously
+      // printed "1080p · 1080p" instead of just "1080p".
+      const uniqueQualities = Array.from(new Set(epLinks.map(l => l.quality).filter(Boolean)));
+      const qualities = uniqueQualities.join(" \u00b7 ");
+      const qualityCount = uniqueQualities.length > 0 ? uniqueQualities.length : epLinks.length;
       return (
         <div key={groupKey} className="rounded-2xl border border-white/8 overflow-hidden">
         <button type="button" onPointerDown={(e) => { e.preventDefault(); onToggleEpisode(groupKey); }} className="w-full flex items-center justify-between gap-4 px-5 py-4 bg-[#111215] hover:bg-[#16181C] transition-colors group">
@@ -717,7 +722,7 @@ function SeasonContent({
         <div className="text-left min-w-0">
         <p className="font-bold text-sm text-white">Episode {epNum}</p>
         <div className="flex items-center gap-2 mt-1">
-        <span className="text-[10px] text-white/30">{epLinks.length} qualities available</span>
+        <span className="text-[10px] text-white/30">{qualityCount} {qualityCount === 1 ? "quality" : "qualities"} available</span>
         {qualities && <span className="text-[10px] text-amber-400/60 font-mono">{qualities}</span>}
         </div>
         </div>
