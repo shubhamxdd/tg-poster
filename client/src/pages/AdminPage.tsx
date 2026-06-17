@@ -639,13 +639,13 @@ export default function AdminPage() {
     )}
 
     <div className="flex gap-1.5 mb-6 p-1 bg-white/5 border border-white/10 rounded-xl w-full sm:w-fit">
-    <button type="button" onPointerDown={() => setActiveTab("library")} className={`flex items-center justify-center gap-2 flex-1 sm:flex-none px-4 py-2 rounded-lg text-sm font-bold transition-all ${activeTab === "library" ? "bg-brand text-white shadow" : "text-white/40 hover:text-white/70"}`}>
+    <button type="button" onClick={() => setActiveTab("library")} className={`flex items-center justify-center gap-2 flex-1 sm:flex-none px-4 py-2 rounded-lg text-sm font-bold transition-all ${activeTab === "library" ? "bg-brand text-white shadow" : "text-white/40 hover:text-white/70"}`}>
     <LayoutDashboard className="w-4 h-4" /> Library
     </button>
-    <button type="button" onPointerDown={() => setActiveTab("manual-parser")} className={`flex items-center justify-center gap-2 flex-1 sm:flex-none px-4 py-2 rounded-lg text-sm font-bold transition-all ${activeTab === "manual-parser" ? "bg-brand text-white shadow" : "text-white/40 hover:text-white/70"}`}>
+    <button type="button" onClick={() => setActiveTab("manual-parser")} className={`flex items-center justify-center gap-2 flex-1 sm:flex-none px-4 py-2 rounded-lg text-sm font-bold transition-all ${activeTab === "manual-parser" ? "bg-brand text-white shadow" : "text-white/40 hover:text-white/70"}`}>
     <FileText className="w-4 h-4" /> Parser
     </button>
-    <button type="button" onPointerDown={() => { setActiveTab("pinned"); loadPinned(); }} className={`flex items-center justify-center gap-2 flex-1 sm:flex-none px-4 py-2 rounded-lg text-sm font-bold transition-all ${activeTab === "pinned" ? "bg-brand text-white shadow" : "text-white/40 hover:text-white/70"}`}>
+    <button type="button" onClick={() => { setActiveTab("pinned"); loadPinned(); }} className={`flex items-center justify-center gap-2 flex-1 sm:flex-none px-4 py-2 rounded-lg text-sm font-bold transition-all ${activeTab === "pinned" ? "bg-brand text-white shadow" : "text-white/40 hover:text-white/70"}`}>
     <Pin className="w-4 h-4" /> Pinned
     </button>
     </div>
@@ -779,7 +779,7 @@ export default function AdminPage() {
             <button
               key={c.tmdbId}
               disabled={tmdbPickerLoading}
-              onPointerDown={(e) => { e.preventDefault(); e.stopPropagation(); if (!tmdbPickerLoading) handleTmdbCandidatePick(c); }}
+              onClick={(e) => { e.stopPropagation(); if (!tmdbPickerLoading) handleTmdbCandidatePick(c); }}
               className={`flex items-center gap-3 p-3 rounded-lg border text-left transition-all cursor-pointer
                 ${manualPreview?.tmdbId === c.tmdbId
                   ? "bg-purple-500/20 border-purple-500/60 ring-1 ring-purple-400"
@@ -890,7 +890,7 @@ export default function AdminPage() {
             <div className="flex items-center justify-between">
               <p className="text-xs font-bold uppercase tracking-widest text-white/50">Link Type</p>
               <button
-                onPointerDown={(e) => { e.preventDefault(); autoDetectLinkTypes(); }}
+                onClick={() => autoDetectLinkTypes()}
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold border border-brand/30 bg-brand/10 text-brand hover:bg-brand/20 transition-all"
               >
                 ⚡ Auto-detect from filenames
@@ -914,8 +914,7 @@ export default function AdminPage() {
                         <button
                           key={opt.key}
                           type="button"
-                          onPointerDown={(e) => {
-                            e.preventDefault();
+                          onClick={() => {
                             // Stamp all links in this season with this type
                             const updatedLinks = (manualPreview.links || []).map((l: any) => {
                               const lk = l.season != null ? String(l.season) : 'all';
@@ -952,8 +951,7 @@ export default function AdminPage() {
                               <button
                                 key={opt.key}
                                 type="button"
-                                onPointerDown={(e) => {
-                                  e.preventDefault();
+                                onClick={() => {
                                   const updatedLinks = [...(manualPreview.links || [])];
                                   updatedLinks[globalIdx] = { ...updatedLinks[globalIdx], linkType: opt.key };
                                   setManualPreview({ ...manualPreview, links: updatedLinks });
@@ -1151,8 +1149,8 @@ export default function AdminPage() {
         <p className="text-xs font-bold uppercase tracking-widest text-red-400">Delete Episodes by Number</p>
         </div>
         <div className="flex gap-2">
-        <button type="button" onPointerDown={(e) => { e.preventDefault(); setEpDeleteMode('single'); }} className={`flex-1 py-1.5 rounded-lg text-xs font-bold border transition-all ${epDeleteMode === 'single' ? 'bg-red-500/20 border-red-500/50 text-red-300' : 'bg-white/5 border-white/10 text-white/40'}`}>Single</button>
-        <button type="button" onPointerDown={(e) => { e.preventDefault(); setEpDeleteMode('range'); }} className={`flex-1 py-1.5 rounded-lg text-xs font-bold border transition-all ${epDeleteMode === 'range' ? 'bg-red-500/20 border-red-500/50 text-red-300' : 'bg-white/5 border-white/10 text-white/40'}`}>Range</button>
+        <button type="button" onClick={() => setEpDeleteMode('single')} className={`flex-1 py-1.5 rounded-lg text-xs font-bold border transition-all ${epDeleteMode === 'single' ? 'bg-red-500/20 border-red-500/50 text-red-300' : 'bg-white/5 border-white/10 text-white/40'}`}>Single</button>
+        <button type="button" onClick={() => setEpDeleteMode('range')} className={`flex-1 py-1.5 rounded-lg text-xs font-bold border transition-all ${epDeleteMode === 'range' ? 'bg-red-500/20 border-red-500/50 text-red-300' : 'bg-white/5 border-white/10 text-white/40'}`}>Range</button>
         </div>
         <div className="flex gap-2 items-end flex-wrap">
         <div className="flex-1 min-w-[80px]">

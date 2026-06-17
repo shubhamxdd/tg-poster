@@ -577,7 +577,7 @@ function SeasonSlider({
         )}
         {canScrollLeft && (
           <button
-            onPointerDown={(e) => { e.preventDefault(); scroll("left"); }}
+            onClick={() => scroll("left")}
             className="absolute left-1 top-1/2 -translate-y-1/2 z-20 w-7 h-7 rounded-full bg-white/10 border border-white/15 flex items-center justify-center hover:bg-white/20 transition-all"
           >
             <ChevronLeft className="w-3.5 h-3.5 text-white/70" />
@@ -585,7 +585,7 @@ function SeasonSlider({
         )}
         {canScrollRight && (
           <button
-            onPointerDown={(e) => { e.preventDefault(); scroll("right"); }}
+            onClick={() => scroll("right")}
             className="absolute right-1 top-1/2 -translate-y-1/2 z-20 w-7 h-7 rounded-full bg-white/10 border border-white/15 flex items-center justify-center hover:bg-white/20 transition-all"
           >
             <ChevronRight className="w-3.5 h-3.5 text-white/70" />
@@ -600,7 +600,7 @@ function SeasonSlider({
             <button
               key={name}
               type="button"
-              onPointerDown={(e) => { e.preventDefault(); setActiveSeason(name); }}
+              onClick={() => setActiveSeason(name)}
               className={`shrink-0 h-9 px-5 rounded-xl text-xs font-bold uppercase tracking-widest transition-all duration-200
                 ${activeSeason === name
                   ? "bg-brand text-white shadow-lg shadow-brand/30"
@@ -687,15 +687,84 @@ function SeasonContent({
   }
   const sortedEpisodes = Array.from(episodeMap.entries()).sort(([a], [b]) => a - b);
 
-  const SectionHeader = ({ title }: { title: string }) => (
+  const hasTyped = zipLinks.length > 0 || packageLinks.length > 0 || episodeMap.size > 0;
+
+  return (
+    <div className="space-y-3">
+    {hasTyped ? (
+      <>
+      {zipLinks.length > 0 && (
+        <><SectionHeader title="Zip Downloads" /><div className="space-y-3">{zipLinks.map((l, i) => <DownloadRow key={i} link={l} onDownload={onDownload} movieAudio={movieAudio} />)}</div></>
+      )}
+      {packageLinks.length > 0 && (
+        <><SectionHeader title="Package Downloads" /><div className="space-y-3">{packageLinks.map((l, i) => <DownloadRow key={i} link={l} onDownload={onDownload} movieAudio={movieAudio} />)}</div></>
+      )}
+      {episodeMap.size > 0 && (
+        <><SectionHeader title="Episode Downloads" /><EpisodeGroup
+          seasonName={seasonName}
+          nonEpisodeLinks={nonEpisodeLinks}
+          sortedEpisodes={sortedEpisodes}
+          expandedEpisodes={expandedEpisodes}
+          onToggleEpisode={onToggleEpisode}
+          onDownload={onDownload}
+          movieAudio={movieAudio}
+        /></>
+      )}
+      {/* Untyped non-episode links alongside typed content (old season packs, etc.) */}
+      {nonEpisodeLinks.length > 0 && (
+        <div className="space-y-3">{nonEpisodeLinks.map((l, i) => <DownloadRow key={i} link={l} onDownload={onDownload} movieAudio={movieAudio} />)}</div>
+      )}
+      </>
+    ) : (
+      <EpisodeGroup
+        seasonName={seasonName}
+        nonEpisodeLinks={nonEpisodeLinks}
+        sortedEpisodes={sortedEpisodes}
+        expandedEpisodes={expandedEpisodes}
+        onToggleEpisode={onToggleEpisode}
+        onDownload={onDownload}
+        movieAudio={movieAudio}
+      />
+    )}
+    </div>
+  );
+}
+
+/* ── SectionHeader / EpisodeGroup — hoisted to module scope (NOT defined inside
+   SeasonContent's render body). Recreating these as fresh closures on every
+   render used to make React treat them as brand-new component types each
+   time `expandedEpisodes` changed, so it tore down and rebuilt the entire
+   episode list on every toggle click instead of patching just the one row —
+   that full remount is what was causing the page to jump back to the top. ── */
+
+function SectionHeader({ title }: { title: string }) {
+  return (
     <div className="flex items-center gap-3 pt-2 pb-1">
     <div className="h-px flex-1 bg-white/8" />
     <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-white/30 shrink-0">{title}</span>
     <div className="h-px flex-1 bg-white/8" />
     </div>
   );
+}
 
-  const EpisodeGroup = () => (
+function EpisodeGroup({
+  seasonName,
+  nonEpisodeLinks,
+  sortedEpisodes,
+  expandedEpisodes,
+  onToggleEpisode,
+  onDownload,
+  movieAudio,
+}: {
+  seasonName: string;
+  nonEpisodeLinks: MovieLink[];
+  sortedEpisodes: [number, MovieLink[]][];
+  expandedEpisodes: Record<string, boolean>;
+  onToggleEpisode: (key: string) => void;
+  onDownload: (url: string) => void;
+  movieAudio?: string[];
+}) {
+  return (
     <>
     {nonEpisodeLinks.map((link, idx) => (
       <DownloadRow key={`non-ep-${idx}`} link={link} onDownload={onDownload} movieAudio={movieAudio} />
@@ -714,7 +783,7 @@ function SeasonContent({
       const qualityCount = uniqueQualities.length > 0 ? uniqueQualities.length : epLinks.length;
       return (
         <div key={groupKey} className="rounded-2xl border border-white/8 overflow-hidden">
-        <button type="button" onPointerDown={(e) => { e.preventDefault(); onToggleEpisode(groupKey); }} className="w-full flex items-center justify-between gap-4 px-5 py-4 bg-[#111215] hover:bg-[#16181C] transition-colors group">
+        <button type="button" onClick={() => onToggleEpisode(groupKey)} className="w-full flex items-center justify-between gap-4 px-5 py-4 bg-[#111215] hover:bg-[#16181C] transition-colors group">
         <div className="flex items-center gap-3 min-w-0">
         <div className="w-10 h-10 rounded-xl bg-brand/10 border border-brand/20 flex items-center justify-center shrink-0 group-hover:bg-brand/20 transition-colors">
         <Download className="w-4 h-4 text-brand" />
@@ -745,32 +814,6 @@ function SeasonContent({
       );
     })}
     </>
-  );
-
-  const hasTyped = zipLinks.length > 0 || packageLinks.length > 0 || episodeMap.size > 0;
-
-  return (
-    <div className="space-y-3">
-    {hasTyped ? (
-      <>
-      {zipLinks.length > 0 && (
-        <><SectionHeader title="Zip Downloads" /><div className="space-y-3">{zipLinks.map((l, i) => <DownloadRow key={i} link={l} onDownload={onDownload} movieAudio={movieAudio} />)}</div></>
-      )}
-      {packageLinks.length > 0 && (
-        <><SectionHeader title="Package Downloads" /><div className="space-y-3">{packageLinks.map((l, i) => <DownloadRow key={i} link={l} onDownload={onDownload} movieAudio={movieAudio} />)}</div></>
-      )}
-      {episodeMap.size > 0 && (
-        <><SectionHeader title="Episode Downloads" /><EpisodeGroup /></>
-      )}
-      {/* Untyped non-episode links alongside typed content (old season packs, etc.) */}
-      {nonEpisodeLinks.length > 0 && (
-        <div className="space-y-3">{nonEpisodeLinks.map((l, i) => <DownloadRow key={i} link={l} onDownload={onDownload} movieAudio={movieAudio} />)}</div>
-      )}
-      </>
-    ) : (
-      <EpisodeGroup />
-    )}
-    </div>
   );
 }
 

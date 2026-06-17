@@ -75,7 +75,7 @@ export default function Navbar() {
         <NavbarBrand>
           <button
             type="button"
-            onPointerDown={(e) => { e.preventDefault(); navigate("/", { replace: false }); }}
+            onClick={() => navigate("/", { replace: false })}
             className="flex items-center gap-2 group cursor-pointer bg-transparent border-0 p-0"
           >
             <div className="w-8 h-8 rounded-lg bg-brand flex items-center justify-center shadow-lg shadow-brand/30 group-hover:shadow-brand/50 transition-shadow">
@@ -100,7 +100,7 @@ export default function Navbar() {
             <NavbarItem key={label}>
               <button
                 type="button"
-                onPointerDown={(e) => { e.preventDefault(); navigate(href); }}
+                onClick={() => navigate(href)}
                 className={`px-4 py-1.5 rounded-full text-sm font-medium transition-all cursor-pointer bg-transparent border-0 ${
                   isActive
                     ? "bg-brand/15 text-brand border border-brand/30"
@@ -136,7 +136,7 @@ export default function Navbar() {
               />
               <button
                 type="button"
-                onPointerDown={(e) => { e.preventDefault(); setSearchValue(""); setSearchOpen(false); }}
+                onClick={() => { setSearchValue(""); setSearchOpen(false); }}
                 className="w-7 h-7 rounded-full flex items-center justify-center text-white/30 hover:text-white hover:bg-white/10 transition-colors bg-transparent border-0 cursor-pointer shrink-0"
                 aria-label="Close search"
               >
@@ -146,7 +146,7 @@ export default function Navbar() {
           ) : (
             <button
               type="button"
-              onPointerDown={(e) => { e.preventDefault(); setSearchOpen(true); }}
+              onClick={() => setSearchOpen(true)}
               className="w-9 h-9 rounded-full flex items-center justify-center text-white/60 hover:text-white hover:bg-white/5 transition-colors bg-transparent border-0 cursor-pointer"
               aria-label="Search"
             >
@@ -172,7 +172,7 @@ export default function Navbar() {
             />
             <button
               type="button"
-              onPointerDown={(e) => { e.preventDefault(); submitSearch(); }}
+              onClick={submitSearch}
               className="w-10 h-10 rounded-xl bg-brand/15 border border-brand/30 flex items-center justify-center text-brand shrink-0 cursor-pointer"
               aria-label="Search"
             >
@@ -185,7 +185,7 @@ export default function Navbar() {
           <NavbarMenuItem key={label}>
             <button
               type="button"
-              onPointerDown={(e) => { e.preventDefault(); setIsMenuOpen(false); navigate(href); }}
+              onClick={() => { setIsMenuOpen(false); navigate(href); }}
               className="flex items-center gap-3 px-4 py-3 rounded-xl text-white/70 hover:text-white hover:bg-white/5 transition-all w-full bg-transparent border-0 cursor-pointer"
             >
               <Icon className="w-5 h-5 text-brand" />
