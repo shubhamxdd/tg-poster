@@ -487,7 +487,7 @@ export default function MovieDetailPage() {
     <div className="space-y-6">
     <Card className="bg-[#111215] border border-white/8 rounded-2xl">
     <CardBody className="p-6 space-y-6">
-    <InfoRow label="Original Title" value={movie.title} />
+    <InfoRow label="Original Title" value={movie.originalTitle || movie.title} />
     <Divider className="bg-white/5" />
     {movie.director && (
       <>
