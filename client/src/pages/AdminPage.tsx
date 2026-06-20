@@ -21,7 +21,7 @@ import {
 import {
   Edit, Trash2, Lock, LayoutDashboard, ExternalLink, Plus, X,
   Wand2, Search, RefreshCw, FileText, Cpu, ChevronDown, ChevronUp,
-  Save, CheckCircle, AlertTriangle, GitMerge, Layers, Pin, PinOff, Film, Tv
+  Save, CheckCircle, AlertTriangle, GitMerge, Layers, Pin, PinOff, Film, Tv, Sparkles
 } from "lucide-react";
 
 export default function AdminPage() {
@@ -54,6 +54,8 @@ export default function AdminPage() {
   const [manualImdbLoading, setManualImdbLoading] = useState(false);
   const [manualMdlUrl, setManualMdlUrl] = useState("");
   const [manualMdlLoading, setManualMdlLoading] = useState(false);
+  const [manualAnilistUrl, setManualAnilistUrl] = useState("");
+  const [manualAnilistLoading, setManualAnilistLoading] = useState(false);
 
   const [existingMatches, setExistingMatches] = useState<Movie[]>([]);
   const [selectedMergeId, setSelectedMergeId] = useState<string | "NEW" | null>(null);
@@ -647,6 +649,44 @@ export default function AdminPage() {
     }
   };
 
+  /**
+   * Override for anime, since TMDB's /tv endpoint is often a poor fit
+   * (wrong episode counts/art, missing native titles, weird season
+   * splitting). Pasting an AniList URL fetches via AniList's official
+   * public GraphQL API (no key required).
+   *
+   * Replaces everything EXCEPT `poster` and `backdrop` — TMDB's artwork is
+   * kept since it's generally cleaner/higher-res than AniList's cover art
+   * for titles that already have a TMDB match.
+   */
+  const handleManualAnilistOverride = async () => {
+    if (!manualAnilistUrl.trim() || !manualPreview) return;
+    setManualAnilistLoading(true);
+    try {
+      const data = await movieApi.fetchFromAnilist(manualAnilistUrl.trim(), password);
+      setManualPreview((prev: any) => ({
+        ...prev,
+        ...(data.title         && { title:          data.title }),
+        ...(data.originalTitle && { originalTitle: data.originalTitle }),
+        ...(data.rating        && { rating:         data.rating }),
+        ...(data.runtime       && { runtime:        data.runtime }),
+        ...(data.status        && { status:         data.status }),
+        ...(data.country       && { country:        data.country }),
+        ...(data.director      && { director:       data.director }),
+        ...(data.year          && { year:           data.year }),
+        ...(data.description   && { description:    data.description }),
+        ...(data.genre?.length  && { genre: data.genre }),
+        ...(data.cast?.length   && { cast:  data.cast }),
+        ...(data.type           && { type:  data.type }),
+      }));
+      setManualAnilistUrl("");
+    } catch (error: any) {
+      alert(error.response?.data?.message || "Failed to fetch from AniList");
+    } finally {
+      setManualAnilistLoading(false);
+    }
+  };
+
   if (!isLoggedIn) {
     return (
       <div className="min-h-screen flex items-center justify-center px-4 bg-[#0a0a0a]">
@@ -956,6 +996,13 @@ export default function AdminPage() {
         <Input variant="underlined" placeholder="Paste MyDramaList URL to fill rating, cast, status, runtime…" value={manualMdlUrl} onValueChange={setManualMdlUrl} classNames={{ input: "text-sm text-white/70 placeholder:text-white/20" }} startContent={<Tv className="w-4 h-4 text-brand shrink-0" />} onKeyDown={(e) => e.key === "Enter" && handleManualMdlOverride()} />
         </div>
         <Button size="sm" className="bg-brand text-white font-bold shrink-0 px-4" isLoading={manualMdlLoading} isDisabled={!manualMdlUrl.trim()} onPress={handleManualMdlOverride}>Re-fetch</Button>
+        </div>
+
+        <div className="flex gap-2 items-center p-3 rounded-xl bg-white/5 border border-white/10">
+        <div className="flex-1">
+        <Input variant="underlined" placeholder="Anime? Paste AniList URL to replace… e.g. https://anilist.co/anime/16498" value={manualAnilistUrl} onValueChange={setManualAnilistUrl} classNames={{ input: "text-sm text-white/70 placeholder:text-white/20" }} startContent={<Sparkles className="w-4 h-4 text-brand shrink-0" />} onKeyDown={(e) => e.key === "Enter" && handleManualAnilistOverride()} />
+        </div>
+        <Button size="sm" className="bg-brand text-white font-bold shrink-0 px-4" isLoading={manualAnilistLoading} isDisabled={!manualAnilistUrl.trim()} onPress={handleManualAnilistOverride}>Re-fetch</Button>
         </div>
 
         {/* ── Link Type Selector (series/anime only) ──────────────────────── */}

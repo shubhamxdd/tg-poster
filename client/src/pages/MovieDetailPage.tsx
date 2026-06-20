@@ -2,7 +2,7 @@ import { useEffect, useState, useMemo, useRef } from "react";
 import React from "react";
 import { useParams, Link, useNavigate } from "react-router-dom";
 import { movieApi } from "@/api/movieApi";
-import type { Movie, Link as MovieLink } from "@/types/index";
+import type { Movie, Link as MovieLink, Cast } from "@/types/index";
 import { extractFullIdFromSlug } from "@/lib/utils";
 import {
   Card,
@@ -462,23 +462,7 @@ export default function MovieDetailPage() {
       <h2 className="font-display text-3xl tracking-wider">CAST</h2>
       <div className="h-px flex-1 bg-white/8" />
       </div>
-      <div className="flex gap-5 overflow-x-auto pb-4 scrollbar-hide">
-      {movie.cast.map((person, idx) => (
-        <div key={idx} className="flex-shrink-0 flex flex-col items-center gap-2.5 w-20 group cursor-pointer">
-        <Avatar
-        src={person.profile_path || undefined}
-        name={person.name}
-        className="w-16 h-16 text-sm font-bold ring-2 ring-white/10 group-hover:ring-brand/50 transition-all"
-        isBordered
-        color="default"
-        />
-        <div className="text-center">
-        <p className="text-[11px] font-bold text-white/80 line-clamp-2 leading-tight">{person.name}</p>
-        <p className="text-[10px] text-white/30 truncate">{person.character}</p>
-        </div>
-        </div>
-      ))}
-      </div>
+      <CastSlider cast={movie.cast} />
       </section>
     )}
     </div>
@@ -642,6 +626,87 @@ function SeasonSlider({
         expandedEpisodes={expandedEpisodes}
         onToggleEpisode={onToggleEpisode}
       />
+    </div>
+  );
+}
+
+/* ── CastSlider — horizontally-scrollable cast row with hover-revealed nav arrows ── */
+
+function CastSlider({ cast }: { cast: Cast[] }) {
+  const [canScrollLeft, setCanScrollLeft] = useState(false);
+  const [canScrollRight, setCanScrollRight] = useState(false);
+  const scrollRef = useRef<HTMLDivElement>(null);
+
+  const checkScroll = () => {
+    const el = scrollRef.current;
+    if (!el) return;
+    setCanScrollLeft(el.scrollLeft > 4);
+    setCanScrollRight(el.scrollLeft + el.clientWidth < el.scrollWidth - 4);
+  };
+
+  useEffect(() => {
+    checkScroll();
+    const el = scrollRef.current;
+    if (!el) return;
+    el.addEventListener("scroll", checkScroll, { passive: true });
+    const ro = new ResizeObserver(checkScroll);
+    ro.observe(el);
+    return () => { el.removeEventListener("scroll", checkScroll); ro.disconnect(); };
+  }, [cast]);
+
+  const scroll = (dir: "left" | "right") => {
+    const el = scrollRef.current;
+    if (!el) return;
+    el.scrollBy({ left: dir === "left" ? -320 : 320, behavior: "smooth" });
+  };
+
+  return (
+    <div className="relative">
+      {canScrollLeft && (
+        <div className="absolute left-0 top-0 bottom-4 w-12 bg-gradient-to-r from-[#0D0D0F] to-transparent z-10 pointer-events-none" />
+      )}
+      {canScrollRight && (
+        <div className="absolute right-0 top-0 bottom-4 w-16 bg-gradient-to-l from-[#0D0D0F] to-transparent z-10 pointer-events-none" />
+      )}
+      {canScrollLeft && (
+        <button
+          onClick={() => scroll("left")}
+          aria-label="Scroll cast left"
+          className="absolute left-1 top-[28px] -translate-y-1/2 z-20 w-8 h-8 rounded-full bg-white/10 border border-white/15 flex items-center justify-center hover:bg-white/20 transition-all"
+        >
+          <ChevronLeft className="w-4 h-4 text-white/70" />
+        </button>
+      )}
+      {canScrollRight && (
+        <button
+          onClick={() => scroll("right")}
+          aria-label="Scroll cast right"
+          className="absolute right-1 top-[28px] -translate-y-1/2 z-20 w-8 h-8 rounded-full bg-white/10 border border-white/15 flex items-center justify-center hover:bg-white/20 transition-all"
+        >
+          <ChevronRight className="w-4 h-4 text-white/70" />
+        </button>
+      )}
+      <div
+        ref={scrollRef}
+        className="flex gap-5 overflow-x-auto pb-4 scrollbar-hide"
+        style={{ WebkitOverflowScrolling: "touch" } as React.CSSProperties}
+      >
+        {cast.map((person, idx) => (
+          <div key={idx} className="flex-shrink-0 flex flex-col items-center gap-2.5 w-20 group cursor-pointer">
+          <Avatar
+          src={person.profile_path || undefined}
+          name={person.name}
+          className="w-16 h-16 text-sm font-bold ring-2 ring-white/10 group-hover:ring-brand/50 transition-all"
+          isBordered
+          color="default"
+          />
+          <div className="text-center">
+          <p className="text-[11px] font-bold text-white/80 line-clamp-2 leading-tight">{person.name}</p>
+          <p className="text-[10px] text-white/30 truncate">{person.character}</p>
+          </div>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }

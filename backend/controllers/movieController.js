@@ -5,6 +5,7 @@ import { parseManualMessage } from '../services/manualParser.js';
 import { fetchFullDetailsFromTMDB, searchTMDBCandidates, fetchFullDetailsByTMDBId } from '../services/tmdbService.js';
 import { fetchFullDetailsFromOMDB, fetchFullDetailsByImdbId } from '../services/omdbService.js';
 import { fetchFullDetailsByMdlSlug, extractMdlSlug } from '../services/mdlService.js';
+import { fetchFullDetailsByAnilistId, extractAnilistId } from '../services/anilistService.js';
 
 const TMDB_BASE_URL = 'https://api.themoviedb.org/3';
 const IMAGE_BASE_URL = 'https://image.tmdb.org/t/p/w500';
@@ -192,6 +193,59 @@ export const fetchFromMdlUrl = async (req, res) => {
   } catch (error) {
     console.error('[MDL Fetch] Error:', error.message);
     res.status(500).json({ message: 'Failed to fetch from MyDramaList: ' + error.message });
+  }
+};
+
+/**
+ * Parse an AniList URL and return field data via AniList's official public
+ * GraphQL API (no key needed) — see https://docs.anilist.co. Used as a
+ * manual-parser override for anime, where TMDB's /tv endpoint is often a
+ * poor fit (wrong episode counts/art, missing native titles, weird season
+ * splitting). Unlike the MDL override (selective patch), this is a FULL
+ * REPLACE of the existing match, mirroring the TMDB/IMDb override boxes.
+ * Supports:
+ *   https://anilist.co/anime/16498/Shingeki-no-Kyojin/
+ *   https://anilist.co/anime/16498
+ *   16498  (bare numeric ID, in case the admin pastes just the ID)
+ */
+export const fetchFromAnilistUrl = async (req, res) => {
+  const { url } = req.query;
+
+  if (!url) return res.status(400).json({ message: 'url query param required' });
+
+  const anilistId = extractAnilistId(url);
+  if (!anilistId) {
+    return res.status(400).json({ message: 'Invalid AniList URL/ID. Expected format: https://anilist.co/anime/16498 or 16498' });
+  }
+
+  try {
+    const details = await fetchFullDetailsByAnilistId(anilistId);
+    if (!details) {
+      return res.status(404).json({ message: 'No AniList result for that ID' });
+    }
+
+    res.json({
+      tmdbId: null,
+      imdbId: null,
+      anilistId: details.anilistId,
+      title: details.title,
+      originalTitle: details.originalTitle,
+      poster: details.poster,
+      backdrop: details.backdrop,
+      rating: details.rating,
+      runtime: details.runtime,
+      status: details.status,
+      year: details.year,
+      type: details.type,
+      genre: details.genre,
+      country: details.country,
+      director: details.director,
+      cast: details.cast,
+      description: details.description,
+    });
+  } catch (error) {
+    console.error('[AniList Fetch] Error:', error.message);
+    res.status(500).json({ message: 'Failed to fetch from AniList: ' + error.message });
   }
 };
 

@@ -92,6 +92,21 @@ export const movieApi = {
   },
 
   /**
+   * Fetches anime details from AniList via the backend, using AniList's
+   * official public GraphQL API (no key required). Best for anime, where
+   * TMDB's /tv endpoint is often a poor fit (wrong episode counts/art,
+   * missing native titles). Accepts https://anilist.co/anime/16498 or a
+   * bare numeric ID. Full replace, same as the TMDB/IMDb overrides.
+   */
+  fetchFromAnilist: async (anilistUrl: string, password: string) => {
+    const response = await api.get('/movies/admin/anilist-fetch', {
+      params: { url: anilistUrl },
+      headers: { 'x-admin-password': password },
+    });
+    return response.data;
+  },
+
+  /**
    * Streams bulk description updates for all movies missing a description.
    * Calls onProgress for each line, returns final summary.
    */
