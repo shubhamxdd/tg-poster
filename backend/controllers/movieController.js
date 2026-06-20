@@ -65,11 +65,7 @@ export const fetchFromTmdbUrl = async (req, res) => {
       poster: details.poster_path ? `${IMAGE_BASE_URL}${details.poster_path}` : null,
       backdrop: backdropPath ? `${BACKDROP_BASE_URL}${backdropPath}` : null,
       rating: details.vote_average ? details.vote_average.toFixed(1) : null,
-      runtime: details.runtime
-        ? `${details.runtime} min`
-        : details.episode_run_time?.[0]
-        ? `${details.episode_run_time[0]} min`
-        : null,
+      runtime: details.runtime || details.episode_run_time?.[0] || null,
       status: details.status || null,
       year,
       language: details.spoken_languages?.[0]?.english_name || details.original_language || null,
@@ -132,7 +128,7 @@ export const fetchFromImdbUrl = async (req, res) => {
       poster: details.poster,
       backdrop: null,
       rating: details.rating,
-      runtime: details.runtime ? `${details.runtime} min` : null,
+      runtime: details.runtime,
       status: details.status,
       year: details.year,
       genre: details.genre,

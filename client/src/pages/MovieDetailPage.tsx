@@ -38,6 +38,21 @@ import {
 
 import { detailCache } from "@/lib/movieDetailCache";
 
+/**
+ * `movie.runtime` comes from different sources in different shapes:
+ *   - TMDB / OMDb / IMDb overrides → bare number string, e.g. "148"
+ *   - MyDramaList → MDL's own formatting, already including units,
+ *     e.g. "1 hr. 10 min." or "60 min."
+ * If it already contains a letter (hr/min spelled out), it's pre-formatted
+ * and shown as-is. Otherwise it's a bare number, so append " min".
+ */
+function formatRuntime(runtime: string | number | null | undefined): string | null {
+  if (!runtime) return null;
+  const str = String(runtime).trim();
+  if (!str) return null;
+  return /[a-zA-Z]/.test(str) ? str : `${str} min`;
+}
+
 /** Updates the browser tab title from movie data.
  *  Restores CineVault default on unmount. */
 function useMeta(movie: import("@/types/index").Movie | null) {
@@ -330,7 +345,7 @@ export default function MovieDetailPage() {
       <span className="w-1 h-1 rounded-full bg-white/20" />
       <span className="flex items-center gap-1.5">
       <Clock className="w-3.5 h-3.5 text-brand" />
-      {movie.runtime}
+      {formatRuntime(movie.runtime)}
       </span>
       </>
     )}
@@ -483,7 +498,7 @@ export default function MovieDetailPage() {
     <div className="grid grid-cols-2 gap-4">
     <InfoRow label="Year" value={String(movie.year || "N/A")} />
     <InfoRow label="Type" value={movie.type} valueClass="text-brand" />
-    {movie.runtime && <InfoRow label="Runtime" value={movie.runtime} />}
+    {movie.runtime && <InfoRow label="Runtime" value={formatRuntime(movie.runtime) || ""} />}
     {movie.country && <InfoRow label="Country" value={movie.country} />}
     {movie.status && <InfoRow label="Status" value={movie.status} valueClass="text-emerald-400" />}
     </div>
