@@ -150,7 +150,29 @@ export const fetchFullDetailsFromTMDB = async (title, type, year) => {
  * Fetch full TMDB details by a known tmdbId + type.
  * Used when the admin manually selects a candidate from the picker.
  */
+/**
+ * Fetches full TMDB details by ID, retrying with the opposite media type
+ * (movie <-> tv) if the first attempt 404s. This matters because the type
+ * tag on a search-candidate result reflects which endpoint was searched
+ * (parsed.type from our own text parser), not what TMDB actually classifies
+ * the title as — a Korean drama parsed as "movie" can still surface a TMDB
+ * search hit that's only valid under /tv/{id}, which 404s if we trust the
+ * tag blindly. Most relevant for MDL-source mode, where parsed.type comes
+ * from filename heuristics rather than TMDB's own classification.
+ */
 export const fetchFullDetailsByTMDBId = async (tmdbId, tmdbType) => {
+  const primary = await fetchFullDetailsByTMDBIdRaw(tmdbId, tmdbType);
+  if (primary) return primary;
+
+  const fallbackType = tmdbType === 'movie' ? 'tv' : 'movie';
+  const fallback = await fetchFullDetailsByTMDBIdRaw(tmdbId, fallbackType);
+  if (fallback) {
+    console.warn(`[TMDB] fetchFullDetailsByTMDBId: ${tmdbId} wasn't a ${tmdbType}, found as ${fallbackType} instead`);
+  }
+  return fallback;
+};
+
+const fetchFullDetailsByTMDBIdRaw = async (tmdbId, tmdbType) => {
   const apiKey = process.env.TMDB_API_KEY;
   if (!apiKey || apiKey === 'your_tmdb_api_key') return null;
 
