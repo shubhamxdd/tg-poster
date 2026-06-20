@@ -261,6 +261,7 @@ export default function MovieDetailPage() {
     src={movie.backdrop || movie.poster}
     alt=""
     className="w-full h-full object-cover brightness-40"
+    onError={(e) => { e.currentTarget.style.display = "none"; }}
     />
     <div className="absolute inset-0 bg-gradient-to-t from-[#0D0D0F] via-[#0D0D0F]/60 to-[#0D0D0F]/20" />
     <div className="absolute inset-0 bg-gradient-to-r from-[#0D0D0F]/80 via-transparent to-transparent" />
@@ -283,7 +284,8 @@ export default function MovieDetailPage() {
     <div className="hidden md:block shrink-0 w-48 lg:w-60">
     <div className="aspect-[2/3] rounded-2xl overflow-hidden border border-white/10 shadow-[0_30px_80px_rgba(0,0,0,0.8)] ring-1 ring-white/5">
     <Image
-    src={movie.poster}
+    src={movie.poster || "https://placehold.co/300x450/111215/444?text=No+Poster"}
+    fallbackSrc="https://placehold.co/300x450/111215/444?text=No+Poster"
     alt={movie.title}
     classNames={{ img: "w-full h-full object-cover" }}
     radius="none"
@@ -328,7 +330,7 @@ export default function MovieDetailPage() {
       <span className="w-1 h-1 rounded-full bg-white/20" />
       <span className="flex items-center gap-1.5">
       <Clock className="w-3.5 h-3.5 text-brand" />
-      {movie.runtime} min
+      {movie.runtime}
       </span>
       </>
     )}
@@ -481,7 +483,7 @@ export default function MovieDetailPage() {
     <div className="grid grid-cols-2 gap-4">
     <InfoRow label="Year" value={String(movie.year || "N/A")} />
     <InfoRow label="Type" value={movie.type} valueClass="text-brand" />
-    {movie.runtime && <InfoRow label="Runtime" value={`${movie.runtime}m`} />}
+    {movie.runtime && <InfoRow label="Runtime" value={movie.runtime} />}
     {movie.country && <InfoRow label="Country" value={movie.country} />}
     {movie.status && <InfoRow label="Status" value={movie.status} valueClass="text-emerald-400" />}
     </div>

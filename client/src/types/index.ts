@@ -14,7 +14,7 @@ export type Link = {
 
 export type Cast = {
   name: string;
-  character: string;
+  character: string | null;
   profile_path: string | null;
 };
 
@@ -37,6 +37,7 @@ export type Movie = {
   country?: string;
   director?: string;
   cast?: Cast[];
+  imdbId?: string;
   telegramMsgId: number;
   addedAt: string;
 };

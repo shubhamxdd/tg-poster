@@ -137,6 +137,7 @@ export const fetchFullDetailsFromTMDB = async (title, type, year) => {
         profile_path: c.profile_path ? `${IMAGE_BASE_URL}${c.profile_path}` : null
       })) || [],
       description: details.overview || null,
+      source: 'tmdb',
     };
 
   } catch (error) {
@@ -195,6 +196,7 @@ export const fetchFullDetailsByTMDBId = async (tmdbId, tmdbType) => {
         profile_path: c.profile_path ? `${IMAGE_BASE_URL}${c.profile_path}` : null,
       })) || [],
       description: details.overview || null,
+      source: 'tmdb',
     };
   } catch (err) {
     console.error('[TMDB] fetchFullDetailsByTMDBId error:', err.message);

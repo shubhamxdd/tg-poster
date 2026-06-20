@@ -77,6 +77,10 @@ const movieSchema = new mongoose.Schema({
     type: String,
     index: true,
   },
+  imdbId: {
+    type: String,
+    index: true,
+  },
   pinned: {
     type: Boolean,
     default: false,

@@ -1,6 +1,7 @@
 import axios from 'axios';
 import { parseTelegramMessage } from '../services/aiParser.js';
 import { fetchFullDetailsFromTMDB } from '../services/tmdbService.js';
+import { fetchFullDetailsFromOMDB } from '../services/omdbService.js';
 import Movie from '../models/Movie.js';
 
 const getTelegramFileUrl = async (fileId) => {
@@ -48,10 +49,17 @@ export const handleTelegramWebhook = async (req, res) => {
     const movieData = await parseTelegramMessage(text);
     console.log(`[AI Result] Title: "${movieData.title}" | Links found: ${movieData.links?.length}`);
 
-    // 2. TMDB Fetch (Essential for grouping)
+    // 2. TMDB Fetch (Essential for grouping) — fall back to OMDb if TMDB has no match
     console.log(`[TMDB] Searching for: ${movieData.title}`);
-    const tmdbDetails = await fetchFullDetailsFromTMDB(movieData.title, movieData.type, movieData.year);
-    if (tmdbDetails) console.log(`[TMDB] Found! ID: ${tmdbDetails.tmdbId} | Real Title: ${tmdbDetails.title || movieData.title} | Description: ${tmdbDetails.description ? 'YES (' + tmdbDetails.description.substring(0, 40) + '...)' : 'MISSING'}`);
+    let tmdbDetails = await fetchFullDetailsFromTMDB(movieData.title, movieData.type, movieData.year);
+    if (tmdbDetails) {
+      console.log(`[TMDB] Found! ID: ${tmdbDetails.tmdbId} | Real Title: ${tmdbDetails.title || movieData.title} | Description: ${tmdbDetails.description ? 'YES (' + tmdbDetails.description.substring(0, 40) + '...)' : 'MISSING'}`);
+    } else {
+      console.log(`[TMDB] No match for "${movieData.title}" — falling back to OMDb`);
+      tmdbDetails = await fetchFullDetailsFromOMDB(movieData.title, movieData.type, movieData.year);
+      if (tmdbDetails) console.log(`[OMDb] Found! IMDb ID: ${tmdbDetails.imdbId} | Real Title: ${tmdbDetails.title || movieData.title}`);
+      else console.log(`[OMDb] No match for "${movieData.title}" either`);
+    }
 
     // 3. Find Existing Movie
     let existingMovie = await Movie.findOne({ telegramMsgId: msgId });
@@ -60,6 +68,9 @@ export const handleTelegramWebhook = async (req, res) => {
     } else if (tmdbDetails?.tmdbId) {
       existingMovie = await Movie.findOne({ tmdbId: tmdbDetails.tmdbId });
       if (existingMovie) console.log(`[Webhook] Found existing by TMDB ID: ${existingMovie._id} (${existingMovie.title})`);
+    } else if (tmdbDetails?.imdbId) {
+      existingMovie = await Movie.findOne({ imdbId: tmdbDetails.imdbId });
+      if (existingMovie) console.log(`[Webhook] Found existing by IMDb ID: ${existingMovie._id} (${existingMovie.title})`);
     } else if (movieData.title) {
       const query = { title: movieData.title };
       if (movieData.year) query.year = movieData.year;
@@ -111,6 +122,7 @@ export const handleTelegramWebhook = async (req, res) => {
       mergedData.title = existingMovie.title;
       mergedData.type = existingMovie.type;
       mergedData.tmdbId = existingMovie.tmdbId || tmdbDetails?.tmdbId;
+      mergedData.imdbId = existingMovie.imdbId || tmdbDetails?.imdbId;
       // Always update originalTitle from TMDB if available
       if (tmdbDetails?.originalTitle) mergedData.originalTitle = tmdbDetails.originalTitle;
 

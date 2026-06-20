@@ -21,7 +21,7 @@ import {
 import {
   Edit, Trash2, Lock, LayoutDashboard, ExternalLink, Plus, X,
   Wand2, Search, RefreshCw, FileText, Cpu, ChevronDown, ChevronUp,
-  Save, CheckCircle, AlertTriangle, GitMerge, Layers, Pin, PinOff
+  Save, CheckCircle, AlertTriangle, GitMerge, Layers, Pin, PinOff, Film, Tv
 } from "lucide-react";
 
 export default function AdminPage() {
@@ -50,6 +50,10 @@ export default function AdminPage() {
   const [manualEditMode, setManualEditMode] = useState(false);
   const [manualTmdbUrl, setManualTmdbUrl] = useState("");
   const [manualTmdbLoading, setManualTmdbLoading] = useState(false);
+  const [manualImdbUrl, setManualImdbUrl] = useState("");
+  const [manualImdbLoading, setManualImdbLoading] = useState(false);
+  const [manualMdlUrl, setManualMdlUrl] = useState("");
+  const [manualMdlLoading, setManualMdlLoading] = useState(false);
 
   const [existingMatches, setExistingMatches] = useState<Movie[]>([]);
   const [selectedMergeId, setSelectedMergeId] = useState<string | "NEW" | null>(null);
@@ -568,6 +572,81 @@ export default function AdminPage() {
     }
   };
 
+  /**
+   * Fallback override for when TMDB has no match and OMDb's own title search
+   * also misses. Pasting the IMDb URL gives OMDb an exact ID lookup instead
+   * of a fuzzy title search, so it succeeds where the auto-fallback in
+   * parseManual (title-based) failed. Same merge shape as the TMDB override,
+   * minus tmdbId/backdrop which OMDb doesn't provide.
+   */
+  const handleManualImdbOverride = async () => {
+    if (!manualImdbUrl.trim() || !manualPreview) return;
+    setManualImdbLoading(true);
+    try {
+      const data = await movieApi.fetchFromImdb(manualImdbUrl.trim(), password);
+      setManualPreview((prev: any) => ({
+        ...prev,
+        ...(data.imdbId      && { imdbId:        data.imdbId }),
+        ...(data.title       && { title:          data.title }),
+        ...(data.poster      && { poster:         data.poster }),
+        ...(data.rating      && { rating:         data.rating }),
+        ...(data.runtime     && { runtime:        data.runtime }),
+        ...(data.country     && { country:        data.country }),
+        ...(data.director    && { director:       data.director }),
+        ...(data.year        && { year:           data.year }),
+        ...(data.description && { description:    data.description }),
+        ...(data.genre?.length  && { genre: data.genre }),
+        ...(data.cast?.length   && { cast:  data.cast }),
+      }));
+      setManualImdbUrl("");
+    } catch (error: any) {
+      alert(error.response?.data?.message || "Failed to fetch from OMDb");
+    } finally {
+      setManualImdbLoading(false);
+    }
+  };
+
+  /**
+   * Override for Korean/Asian dramas and films that TMDB/OMDb often can't
+   * find under their native or alternate title. Pasting a MyDramaList URL
+   * fetches via the unofficial Kuryana scraper API (MDL has no official
+   * public API).
+   *
+   * Unlike the TMDB/IMDb overrides, this is a SELECTIVE patch, not a full
+   * replace — TMDB is treated as the source of truth for `title`, `poster`,
+   * and `type`, since those are usually already correct from the initial
+   * TMDB match and MDL's localized title/poster aren't what we want showing
+   * in the catalog. MDL fills in: originalTitle, runtime, rating, year,
+   * cast, status, description, genre, country — plus director, but only
+   * if MDL actually has one (otherwise TMDB's director is left as-is).
+   */
+  const handleManualMdlOverride = async () => {
+    if (!manualMdlUrl.trim() || !manualPreview) return;
+    setManualMdlLoading(true);
+    try {
+      const data = await movieApi.fetchFromMdl(manualMdlUrl.trim(), password);
+      setManualPreview((prev: any) => ({
+        ...prev,
+        ...(data.originalTitle && { originalTitle: data.originalTitle }),
+        ...(data.runtime     && { runtime:        data.runtime }),
+        ...(data.rating      && { rating:         data.rating }),
+        ...(data.year        && { year:           data.year }),
+        ...(data.cast?.length   && { cast:  data.cast }),
+        ...(data.status      && { status:        data.status }),
+        ...(data.description && { description:    data.description }),
+        ...(data.genre?.length  && { genre: data.genre }),
+        ...(data.country     && { country:       data.country }),
+        // director: only override if MDL actually found one — otherwise keep TMDB's
+        ...(data.director    && { director:       data.director }),
+      }));
+      setManualMdlUrl("");
+    } catch (error: any) {
+      alert(error.response?.data?.message || "Failed to fetch from MyDramaList");
+    } finally {
+      setManualMdlLoading(false);
+    }
+  };
+
   if (!isLoggedIn) {
     return (
       <div className="min-h-screen flex items-center justify-center px-4 bg-[#0a0a0a]">
@@ -865,6 +944,20 @@ export default function AdminPage() {
         )}
         </div>
 
+        <div className="flex gap-2 items-center p-3 rounded-xl bg-white/5 border border-white/10">
+        <div className="flex-1">
+        <Input variant="underlined" placeholder="No TMDB/OMDb result? Paste IMDb URL to fetch… e.g. https://www.imdb.com/title/tt1234567" value={manualImdbUrl} onValueChange={setManualImdbUrl} classNames={{ input: "text-sm text-white/70 placeholder:text-white/20" }} startContent={<Film className="w-4 h-4 text-brand shrink-0" />} onKeyDown={(e) => e.key === "Enter" && handleManualImdbOverride()} />
+        </div>
+        <Button size="sm" className="bg-brand text-white font-bold shrink-0 px-4" isLoading={manualImdbLoading} isDisabled={!manualImdbUrl.trim()} onPress={handleManualImdbOverride}>Re-fetch</Button>
+        </div>
+
+        <div className="flex gap-2 items-center p-3 rounded-xl bg-white/5 border border-white/10">
+        <div className="flex-1">
+        <Input variant="underlined" placeholder="Paste MyDramaList URL to fill rating, cast, status, runtime…" value={manualMdlUrl} onValueChange={setManualMdlUrl} classNames={{ input: "text-sm text-white/70 placeholder:text-white/20" }} startContent={<Tv className="w-4 h-4 text-brand shrink-0" />} onKeyDown={(e) => e.key === "Enter" && handleManualMdlOverride()} />
+        </div>
+        <Button size="sm" className="bg-brand text-white font-bold shrink-0 px-4" isLoading={manualMdlLoading} isDisabled={!manualMdlUrl.trim()} onPress={handleManualMdlOverride}>Re-fetch</Button>
+        </div>
+
         {/* ── Link Type Selector (series/anime only) ──────────────────────── */}
         {(manualPreview.type === 'series' || manualPreview.type === 'anime') && (() => {
           const seasonKeys: string[] = [];
@@ -983,6 +1076,7 @@ export default function AdminPage() {
         {manualPreview.year && <span className="text-xs text-white/40">{manualPreview.year}</span>}
         {manualPreview.type && <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded bg-white/10 text-white/60">{manualPreview.type}</span>}
         {manualPreview.tmdbId && <span className="text-[10px] text-green-400 font-bold">✓ TMDB #{manualPreview.tmdbId}</span>}
+        {!manualPreview.tmdbId && manualPreview.imdbId && <span className="text-[10px] text-yellow-400 font-bold">✓ OMDb (IMDb {manualPreview.imdbId})</span>}
         </div>
         </div>
         <div className="text-right shrink-0">
@@ -1128,7 +1222,7 @@ export default function AdminPage() {
           <div key={idx} className="p-3 bg-white/5 rounded-xl border border-white/10 space-y-2 relative">
           <Button isIconOnly size="sm" variant="light" className="absolute top-2 right-2 text-white/20 hover:text-red-400" onPress={() => { const newCast = [...(selectedMovie.cast || [])]; newCast.splice(idx, 1); setSelectedMovie({ ...selectedMovie, cast: newCast }); }}><X className="w-3 h-3" /></Button>
           <Input label="Actor Name" size="sm" variant="underlined" value={member.name} onValueChange={(v) => { const newCast = [...(selectedMovie.cast || [])]; newCast[idx] = { ...newCast[idx], name: v }; setSelectedMovie({ ...selectedMovie, cast: newCast }); }} />
-          <Input label="Character" size="sm" variant="underlined" value={member.character} onValueChange={(v) => { const newCast = [...(selectedMovie.cast || [])]; newCast[idx] = { ...newCast[idx], character: v }; setSelectedMovie({ ...selectedMovie, cast: newCast }); }} />
+          <Input label="Character" size="sm" variant="underlined" value={member.character || ""} onValueChange={(v) => { const newCast = [...(selectedMovie.cast || [])]; newCast[idx] = { ...newCast[idx], character: v }; setSelectedMovie({ ...selectedMovie, cast: newCast }); }} />
           <Input label="Profile Image URL" size="sm" variant="underlined" placeholder="https://... (optional)" value={member.profile_path || ""} onValueChange={(v) => { const newCast = [...(selectedMovie.cast || [])]; newCast[idx] = { ...newCast[idx], profile_path: v || null }; setSelectedMovie({ ...selectedMovie, cast: newCast }); }} />
           </div>
         ))}

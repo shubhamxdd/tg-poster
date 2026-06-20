@@ -63,6 +63,35 @@ export const movieApi = {
   },
 
   /**
+   * Fetches movie/TV details from OMDb via the backend, using an exact IMDb
+   * ID lookup (i=) instead of a title search. Useful when TMDB has no match
+   * AND OMDb's own title search also misses — pasting the IMDb URL sidesteps
+   * fuzzy matching entirely. Accepts https://www.imdb.com/title/tt1234567 or a bare tt-id.
+   */
+  fetchFromImdb: async (imdbUrl: string, password: string) => {
+    const response = await api.get('/movies/admin/imdb-fetch', {
+      params: { url: imdbUrl },
+      headers: { 'x-admin-password': password },
+    });
+    return response.data;
+  },
+
+  /**
+   * Fetches drama/movie details from MyDramaList via the backend (using the
+   * unofficial Kuryana scraper API, since MDL has no official public API).
+   * Best for Korean/Asian dramas and films that TMDB/OMDb often can't find
+   * under their native or alternate title. Accepts https://mydramalist.com/1872-goblin
+   * or a bare slug like "1872-goblin". No uptime guarantee — third-party hosted.
+   */
+  fetchFromMdl: async (mdlUrl: string, password: string) => {
+    const response = await api.get('/movies/admin/mdl-fetch', {
+      params: { url: mdlUrl },
+      headers: { 'x-admin-password': password },
+    });
+    return response.data;
+  },
+
+  /**
    * Streams bulk description updates for all movies missing a description.
    * Calls onProgress for each line, returns final summary.
    */

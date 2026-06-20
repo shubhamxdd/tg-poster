@@ -389,6 +389,11 @@ function MovieCard({ movie }: { movie: Movie }) {
           loading="lazy"
           decoding="async"
           draggable={false}
+          onError={(e) => {
+            const img = e.currentTarget;
+            const fallback = "https://placehold.co/300x450/111215/444?text=No+Poster";
+            if (img.src !== fallback) img.src = fallback;
+          }}
         />
 
         {/* Bottom gradient */}

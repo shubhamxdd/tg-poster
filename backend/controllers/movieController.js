@@ -3,6 +3,8 @@ import mongoose from 'mongoose';
 import axios from 'axios';
 import { parseManualMessage } from '../services/manualParser.js';
 import { fetchFullDetailsFromTMDB, searchTMDBCandidates, fetchFullDetailsByTMDBId } from '../services/tmdbService.js';
+import { fetchFullDetailsFromOMDB, fetchFullDetailsByImdbId } from '../services/omdbService.js';
+import { fetchFullDetailsByMdlSlug, extractMdlSlug } from '../services/mdlService.js';
 
 const TMDB_BASE_URL = 'https://api.themoviedb.org/3';
 const IMAGE_BASE_URL = 'https://image.tmdb.org/t/p/w500';
@@ -88,6 +90,112 @@ export const fetchFromTmdbUrl = async (req, res) => {
   } catch (error) {
     console.error('[TMDB Fetch] Error:', error.message);
     res.status(500).json({ message: 'Failed to fetch from TMDB: ' + error.message });
+  }
+};
+
+/**
+ * Parse an IMDb URL and return field data via OMDb.
+ * Used as a manual-parser override when TMDB has no match and OMDb's own
+ * title search (t=) also can't find the title — pasting the IMDb URL gives
+ * OMDb an exact ID (i=) lookup instead, which has no fuzzy matching to fail.
+ * Supports:
+ *   https://www.imdb.com/title/tt1234567
+ *   https://www.imdb.com/title/tt1234567/
+ *   https://www.imdb.com/title/tt1234567/?ref_=...
+ *   tt1234567  (bare ID, in case the admin pastes just the ID)
+ */
+export const fetchFromImdbUrl = async (req, res) => {
+  const { url } = req.query;
+
+  if (!url) return res.status(400).json({ message: 'url query param required' });
+  if (!process.env.OMDB_API_KEY || process.env.OMDB_API_KEY === 'your_omdb_api_key') {
+    return res.status(503).json({ message: 'OMDb API key not configured on server' });
+  }
+
+  const match = String(url).match(/tt\d{6,10}/);
+  if (!match) {
+    return res.status(400).json({ message: 'Invalid IMDb URL/ID. Expected format: https://www.imdb.com/title/tt1234567 or tt1234567' });
+  }
+  const imdbId = match[0];
+
+  try {
+    const details = await fetchFullDetailsByImdbId(imdbId);
+    if (!details) {
+      return res.status(404).json({ message: 'No OMDb result for that IMDb ID' });
+    }
+
+    res.json({
+      tmdbId: null,
+      imdbId: details.imdbId,
+      title: details.title,
+      originalTitle: null,
+      poster: details.poster,
+      backdrop: null,
+      rating: details.rating,
+      runtime: details.runtime ? `${details.runtime} min` : null,
+      status: details.status,
+      year: details.year,
+      genre: details.genre,
+      country: details.country,
+      director: details.director,
+      cast: details.cast,
+      description: details.description,
+    });
+  } catch (error) {
+    console.error('[IMDB Fetch] Error:', error.message);
+    res.status(500).json({ message: 'Failed to fetch from OMDb: ' + error.message });
+  }
+};
+
+/**
+ * Parse a MyDramaList URL and return field data via the unofficial Kuryana
+ * scraper API (https://kuryana.tbdh.app). MDL has no official public API,
+ * so this is a best-effort third-party-hosted scraper with no uptime
+ * guarantee — used as a manual-parser override for Korean/Asian dramas and
+ * films that TMDB/OMDb frequently can't find under their native title.
+ * Supports:
+ *   https://mydramalist.com/1872-goblin
+ *   https://mydramalist.com/1872-goblin/episode/1  (slug extracted, rest ignored)
+ *   1872-goblin  (bare slug, in case the admin pastes just the slug)
+ */
+export const fetchFromMdlUrl = async (req, res) => {
+  const { url } = req.query;
+
+  if (!url) return res.status(400).json({ message: 'url query param required' });
+
+  const slug = extractMdlSlug(url);
+  if (!slug) {
+    return res.status(400).json({ message: 'Invalid MyDramaList URL/slug. Expected format: https://mydramalist.com/1872-goblin or 1872-goblin' });
+  }
+
+  try {
+    const details = await fetchFullDetailsByMdlSlug(slug);
+    if (!details) {
+      return res.status(404).json({ message: 'No MyDramaList result for that URL' });
+    }
+
+    res.json({
+      tmdbId: null,
+      imdbId: null,
+      mdlSlug: details.mdlSlug,
+      title: details.title,
+      originalTitle: details.originalTitle,
+      poster: details.poster,
+      backdrop: null,
+      rating: details.rating,
+      runtime: details.runtime,
+      status: details.status,
+      year: details.year,
+      type: details.type,
+      genre: details.genre,
+      country: details.country,
+      director: details.director,
+      cast: details.cast,
+      description: details.description,
+    });
+  } catch (error) {
+    console.error('[MDL Fetch] Error:', error.message);
+    res.status(500).json({ message: 'Failed to fetch from MyDramaList: ' + error.message });
   }
 };
 
@@ -467,6 +575,18 @@ export const parseManual = async (req, res) => {
       console.warn('[ManualParser] TMDB lookup failed (non-fatal):', tmdbErr.message);
     }
 
+    // Step 3b: OMDb fallback — only kicks in when TMDB had literally no match
+    if (!tmdbDetails) {
+      try {
+        tmdbDetails = await fetchFullDetailsFromOMDB(parsed.title, parsed.type, parsed.year);
+        if (tmdbDetails) {
+          console.log(`[ManualParser] TMDB had no match — OMDb found: ${tmdbDetails.title} (${tmdbDetails.imdbId})`);
+        }
+      } catch (omdbErr) {
+        console.warn('[ManualParser] OMDb fallback failed (non-fatal):', omdbErr.message);
+      }
+    }
+
     // Step 4: Merge
     const merged = {
       ...(tmdbDetails || {}),
@@ -614,7 +734,7 @@ export const saveManual = async (req, res) => {
       }
 
       // Update missing metadata fields only (never overwrite existing)
-      const metaFields = ['poster','backdrop','description','rating','genre','director','cast','originalTitle','tmdbId','country','runtime','status'];
+      const metaFields = ['poster','backdrop','description','rating','genre','director','cast','originalTitle','tmdbId','imdbId','country','runtime','status'];
       const metaUpdate = {};
       for (const f of metaFields) {
         const cur = existingMovie[f];
