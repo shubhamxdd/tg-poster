@@ -158,10 +158,12 @@ export const movieApi = {
 
   /**
    * Parses a raw Telegram message text using the server-side regex parser.
-   * Returns preview data enriched with TMDB. Does NOT save to DB.
+   * Returns preview data enriched with TMDB by default, or with MyDramaList
+   * when an mdlUrl is provided (skips TMDB/OMDb entirely server-side in that
+   * case). Does NOT save to DB.
    */
-  parseManual: async (text: string, password: string) => {
-    const response = await api.post('/movies/admin/parse-manual', { text }, {
+  parseManual: async (text: string, password: string, mdlUrl?: string) => {
+    const response = await api.post('/movies/admin/parse-manual', { text, mdlUrl: mdlUrl || undefined }, {
       headers: { 'x-admin-password': password },
     });
     return response.data as { success: boolean; data: any };

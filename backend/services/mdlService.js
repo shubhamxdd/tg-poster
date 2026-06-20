@@ -93,6 +93,16 @@ const deriveMdlStatus = (airedStr) => {
 };
 
 /**
+ * MDL's `title` field commonly includes a trailing year, e.g. "Goblin (2016)".
+ * Strip that off — year is already tracked separately in our `year` field.
+ */
+const cleanMdlTitle = (title) => {
+  const clean = cleanField(title);
+  if (!clean) return null;
+  return clean.replace(/\s*\(\d{4}\)\s*$/, '').trim();
+};
+
+/**
  * MDL's `rating` is already a 0-10 float (e.g. 8.4), same scale as
  * TMDB/IMDb, so no conversion needed.
  */
@@ -106,7 +116,7 @@ const normalizeMdlDrama = (data) => {
     tmdbId: null,
     imdbId: null,
     mdlSlug: cleanField(data.link?.match(/mydramalist\.com\/([\w-]+)/i)?.[1]) || null,
-    title: cleanField(data.title),
+    title: cleanMdlTitle(data.title),
     originalTitle: others.native_title?.[0] ? cleanField(others.native_title[0]) : null,
     poster: cleanField(data.poster),
     backdrop: null, // MDL doesn't provide separate backdrop art

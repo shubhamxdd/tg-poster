@@ -17,6 +17,7 @@ import {
   Select,
   SelectItem,
   Chip,
+  Switch,
 } from "@heroui/react";
 import {
   Edit, Trash2, Lock, LayoutDashboard, ExternalLink, Plus, X,
@@ -48,6 +49,13 @@ export default function AdminPage() {
   const [manualSaving, setManualSaving] = useState(false);
   const [manualSaved, setManualSaved] = useState(false);
   const [manualEditMode, setManualEditMode] = useState(false);
+  // Fetch-source switch for the initial parse: "tmdb" (default, with OMDb
+  // fallback server-side) or "mdl" (skips TMDB/OMDb entirely, fetches from
+  // the MDL link pasted below instead). Separate from the post-parse
+  // override boxes (manualTmdbUrl/manualMdlUrl etc.), which patch an
+  // already-parsed preview rather than choosing the source up front.
+  const [manualSource, setManualSource] = useState<"tmdb" | "mdl">("tmdb");
+  const [manualSourceMdlUrl, setManualSourceMdlUrl] = useState("");
   const [manualTmdbUrl, setManualTmdbUrl] = useState("");
   const [manualTmdbLoading, setManualTmdbLoading] = useState(false);
   const [manualImdbUrl, setManualImdbUrl] = useState("");
@@ -442,7 +450,11 @@ export default function AdminPage() {
     setTmdbPickerOpen(false);
 
     try {
-      const result = await movieApi.parseManual(manualText, password);
+      const result = await movieApi.parseManual(
+        manualText,
+        password,
+        manualSource === "mdl" ? manualSourceMdlUrl.trim() : undefined
+      );
       const parsedData = result.data;
 
       parsedData.links = formatParsedLinks(parsedData.links, manualText);
@@ -474,15 +486,28 @@ export default function AdminPage() {
     setTmdbPickerLoading(true);
     try {
       const details = await movieApi.fetchTmdbById(candidate.tmdbId, candidate.tmdbType, password);
-      // Merge TMDB details into preview, preserving user-supplied links/audio/type
-      setManualPreview((prev: any) => ({
-        ...prev,
-        ...details,
-        audio: prev.audio?.length ? prev.audio : [],
-        type: prev.type,
-        links: prev.links,
-        link: prev.links?.[0]?.url || '',
-      }));
+      // In MDL source mode, TMDB only ever contributes poster/backdrop —
+      // picking a different candidate here should re-apply just those, not
+      // overwrite the title/rating/cast/description/etc. that MDL already
+      // supplied for this preview.
+      if (manualSource === "mdl") {
+        setManualPreview((prev: any) => ({
+          ...prev,
+          tmdbId: details.tmdbId,
+          poster: details.poster || prev.poster,
+          backdrop: details.backdrop || prev.backdrop,
+        }));
+      } else {
+        // Merge full TMDB details into preview, preserving user-supplied links/audio/type
+        setManualPreview((prev: any) => ({
+          ...prev,
+          ...details,
+          audio: prev.audio?.length ? prev.audio : [],
+          type: prev.type,
+          links: prev.links,
+          link: prev.links?.[0]?.url || '',
+        }));
+      }
       setTmdbPickerOpen(false);
     } catch (e: any) {
       alert("Failed to fetch TMDB details: " + (e.response?.data?.message || e.message));
@@ -854,7 +879,33 @@ export default function AdminPage() {
       minRows={10}
       classNames={{ inputWrapper: "bg-white/5 border border-white/10 hover:border-white/20 focus-within:!border-brand/50 font-mono", input: "text-sm text-white/80 placeholder:text-white/15 leading-relaxed" }}
       />
-      <Button onPress={handleManualParse} isLoading={manualParsing} isDisabled={!manualText.trim()} className="bg-brand text-white font-bold px-8" startContent={!manualParsing && <Cpu className="w-4 h-4" />}>
+
+      <div className="flex items-center gap-3 p-3 rounded-xl bg-white/5 border border-white/10">
+      <Film className={`w-4 h-4 shrink-0 transition-colors ${manualSource === "tmdb" ? "text-brand" : "text-white/30"}`} />
+      <span className={`text-xs font-bold uppercase tracking-widest transition-colors ${manualSource === "tmdb" ? "text-white/80" : "text-white/30"}`}>TMDB</span>
+      <Switch
+      size="sm"
+      isSelected={manualSource === "mdl"}
+      onValueChange={(checked) => setManualSource(checked ? "mdl" : "tmdb")}
+      classNames={{ wrapper: "group-data-[selected=true]:bg-brand" }}
+      />
+      <span className={`text-xs font-bold uppercase tracking-widest transition-colors ${manualSource === "mdl" ? "text-white/80" : "text-white/30"}`}>MDL</span>
+      <Tv className={`w-4 h-4 shrink-0 transition-colors ${manualSource === "mdl" ? "text-brand" : "text-white/30"}`} />
+      <span className="text-[11px] text-white/30 ml-1">Fetch source for the initial parse</span>
+      </div>
+
+      {manualSource === "mdl" && (
+        <Input
+        variant="underlined"
+        placeholder="Paste MyDramaList URL to fetch from… e.g. https://mydramalist.com/1872-goblin"
+        value={manualSourceMdlUrl}
+        onValueChange={setManualSourceMdlUrl}
+        classNames={{ input: "text-sm text-white/70 placeholder:text-white/20" }}
+        startContent={<Tv className="w-4 h-4 text-brand shrink-0" />}
+        />
+      )}
+
+      <Button onPress={handleManualParse} isLoading={manualParsing} isDisabled={!manualText.trim() || (manualSource === "mdl" && !manualSourceMdlUrl.trim())} className="bg-brand text-white font-bold px-8" startContent={!manualParsing && <Cpu className="w-4 h-4" />}>
       {manualParsing ? "Parsing…" : "Parse Message"}
       </Button>
       </div>

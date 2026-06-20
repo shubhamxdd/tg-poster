@@ -566,7 +566,7 @@ export const fetchTmdbById = async (req, res) => {
  * 3. Returns the preview data — does NOT save to DB.
  */
 export const parseManual = async (req, res) => {
-  const { text } = req.body;
+  const { text, mdlUrl } = req.body;
   if (!text || !text.trim()) {
     return res.status(400).json({ message: 'text body field is required' });
   }
@@ -598,42 +598,95 @@ export const parseManual = async (req, res) => {
       return true;
     });
 
-    // Step 3: TMDB enrichment — fetch top result AND all candidates
     let tmdbDetails   = null;
     let tmdbCandidates = [];
-    try {
-      // Get candidates list first (cheap)
-      tmdbCandidates = await searchTMDBCandidates(parsed.title, parsed.type, parsed.year);
 
-      if (tmdbCandidates.length === 1) {
-        // Only one result — auto-select it
-        tmdbDetails = await fetchFullDetailsByTMDBId(tmdbCandidates[0].tmdbId, tmdbCandidates[0].tmdbType);
-      } else if (tmdbCandidates.length > 1) {
-        // Multiple candidates — pick the best one automatically based on year match,
-        // but still return the full candidate list so admin can override
-        const yearMatch = parsed.year
-          ? tmdbCandidates.find(c => c.year === parsed.year)
-          : null;
-        const autoPickId = (yearMatch || tmdbCandidates[0]);
-        tmdbDetails = await fetchFullDetailsByTMDBId(autoPickId.tmdbId, autoPickId.tmdbType);
-      }
-
-      if (tmdbDetails) {
-        console.log(`[ManualParser] TMDB found: ${tmdbDetails.title} (${tmdbDetails.tmdbId}) | ${tmdbCandidates.length} candidates`);
-      }
-    } catch (tmdbErr) {
-      console.warn('[ManualParser] TMDB lookup failed (non-fatal):', tmdbErr.message);
-    }
-
-    // Step 3b: OMDb fallback — only kicks in when TMDB had literally no match
-    if (!tmdbDetails) {
+    // Step 3: Source switch — when an MDL link is pasted alongside the message,
+    // MDL becomes the primary source for everything, including title (cleaned
+    // of its trailing "(YYYY)" year suffix), EXCEPT poster/backdrop, which
+    // still come from an auto-searched TMDB match (TMDB's art is generally
+    // cleaner than MDL's cover image). TMDB/OMDb's usual full-detail fetch
+    // (rating, cast, etc.) is skipped in this mode — only poster/backdrop
+    // are pulled from TMDB.
+    const mdlSlug = mdlUrl ? extractMdlSlug(mdlUrl) : null;
+    if (mdlSlug) {
       try {
-        tmdbDetails = await fetchFullDetailsFromOMDB(parsed.title, parsed.type, parsed.year);
-        if (tmdbDetails) {
-          console.log(`[ManualParser] TMDB had no match — OMDb found: ${tmdbDetails.title} (${tmdbDetails.imdbId})`);
+        const mdlDetails = await fetchFullDetailsByMdlSlug(mdlSlug);
+        if (mdlDetails) {
+          tmdbDetails = mdlDetails;
+          console.log(`[ManualParser] MDL source selected: ${mdlDetails.title} (${mdlSlug})`);
         }
-      } catch (omdbErr) {
-        console.warn('[ManualParser] OMDb fallback failed (non-fatal):', omdbErr.message);
+      } catch (mdlErr) {
+        console.warn('[ManualParser] MDL fetch failed (non-fatal):', mdlErr.message);
+      }
+
+      // Auto-search TMDB for poster/backdrop only — title stays MDL-sourced
+      // (already cleaned of its trailing year), everything else stays
+      // MDL-sourced from above too.
+      try {
+        tmdbCandidates = await searchTMDBCandidates(parsed.title, parsed.type, parsed.year);
+
+        let tmdbPick = null;
+        if (tmdbCandidates.length === 1) {
+          tmdbPick = tmdbCandidates[0];
+        } else if (tmdbCandidates.length > 1) {
+          const yearMatch = parsed.year
+            ? tmdbCandidates.find(c => c.year === parsed.year)
+            : null;
+          tmdbPick = yearMatch || tmdbCandidates[0];
+        }
+
+        if (tmdbPick) {
+          const tmdbArt = await fetchFullDetailsByTMDBId(tmdbPick.tmdbId, tmdbPick.tmdbType);
+          if (tmdbArt) {
+            tmdbDetails = {
+              ...(tmdbDetails || {}),
+              tmdbId: tmdbArt.tmdbId,
+              poster: tmdbArt.poster || null,
+              backdrop: tmdbArt.backdrop || null,
+            };
+            console.log(`[ManualParser] MDL mode — TMDB art applied: ${tmdbArt.title} (${tmdbArt.tmdbId})`);
+          }
+        }
+      } catch (tmdbArtErr) {
+        console.warn('[ManualParser] MDL mode — TMDB art lookup failed (non-fatal):', tmdbArtErr.message);
+      }
+    } else {
+      // Step 3a: TMDB enrichment — fetch top result AND all candidates
+      try {
+        // Get candidates list first (cheap)
+        tmdbCandidates = await searchTMDBCandidates(parsed.title, parsed.type, parsed.year);
+
+        if (tmdbCandidates.length === 1) {
+          // Only one result — auto-select it
+          tmdbDetails = await fetchFullDetailsByTMDBId(tmdbCandidates[0].tmdbId, tmdbCandidates[0].tmdbType);
+        } else if (tmdbCandidates.length > 1) {
+          // Multiple candidates — pick the best one automatically based on year match,
+          // but still return the full candidate list so admin can override
+          const yearMatch = parsed.year
+            ? tmdbCandidates.find(c => c.year === parsed.year)
+            : null;
+          const autoPickId = (yearMatch || tmdbCandidates[0]);
+          tmdbDetails = await fetchFullDetailsByTMDBId(autoPickId.tmdbId, autoPickId.tmdbType);
+        }
+
+        if (tmdbDetails) {
+          console.log(`[ManualParser] TMDB found: ${tmdbDetails.title} (${tmdbDetails.tmdbId}) | ${tmdbCandidates.length} candidates`);
+        }
+      } catch (tmdbErr) {
+        console.warn('[ManualParser] TMDB lookup failed (non-fatal):', tmdbErr.message);
+      }
+
+      // Step 3b: OMDb fallback — only kicks in when TMDB had literally no match
+      if (!tmdbDetails) {
+        try {
+          tmdbDetails = await fetchFullDetailsFromOMDB(parsed.title, parsed.type, parsed.year);
+          if (tmdbDetails) {
+            console.log(`[ManualParser] TMDB had no match — OMDb found: ${tmdbDetails.title} (${tmdbDetails.imdbId})`);
+          }
+        } catch (omdbErr) {
+          console.warn('[ManualParser] OMDb fallback failed (non-fatal):', omdbErr.message);
+        }
       }
     }
 
@@ -644,7 +697,7 @@ export const parseManual = async (req, res) => {
       year:     tmdbDetails?.year     || parsed.year,
       // language field removed — audio array is the single source of truth
       audio:    parsed.audio?.length  ? parsed.audio : [],
-      type:     parsed.type,
+      type:     tmdbDetails?.type     || parsed.type,
       links: parsed.links,
       link:  parsed.links[0]?.url || '',
     };
