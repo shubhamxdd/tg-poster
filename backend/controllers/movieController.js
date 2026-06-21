@@ -293,7 +293,12 @@ export const getMovies = async (req, res) => {
       const searchTokens = tokens.filter(t => /^\d+$/.test(t) || (t.length > 1 && !STOPWORDS.has(t.toLowerCase())));
       const finalTokens  = searchTokens.length > 0 ? searchTokens : tokens;
 
-      const tokenREs = finalTokens.map(t => new RegExp(escapeRegex(t), "i"));
+      // Word-boundary anchored — without \b, a token like "ant" matches
+      // inside unrelated words too (e.g. "ant" + "man" both substring-match
+      // "RomANTic"/"roMANtic", so searching "ant-man" returned every "Dr.
+      // Romantic" entry). \b only works reliably for tokens starting/ending
+      // in a word character, which is true for all alphanumeric tokens here.
+      const tokenREs = finalTokens.map(t => new RegExp(`\\b${escapeRegex(t)}\\b`, "i"));
 
       // Every token must appear somewhere in title OR originalTitle
       const titleAndFilter = {
