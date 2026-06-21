@@ -17,6 +17,7 @@ import {
   Select,
   SelectItem,
   Chip,
+  Checkbox,
 } from "@heroui/react";
 import {
   Edit, Trash2, Lock, LayoutDashboard, ExternalLink, Plus, X,
@@ -30,6 +31,7 @@ export default function AdminPage() {
   const [movies, setMovies] = useState<Movie[]>([]);
   const [loading, setLoading] = useState(false);
   const [selectedMovie, setSelectedMovie] = useState<Movie | null>(null);
+  const [editNoteEnabled, setEditNoteEnabled] = useState(false);
   const [tmdbUrl, setTmdbUrl] = useState("");
   const [tmdbLoading, setTmdbLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
@@ -48,6 +50,10 @@ export default function AdminPage() {
   const [manualSaving, setManualSaving] = useState(false);
   const [manualSaved, setManualSaved] = useState(false);
   const [manualEditMode, setManualEditMode] = useState(false);
+  // Note is a partial/optional field — the checkbox just controls whether
+  // the textarea is shown; the actual text lives in manualPreview.note like
+  // any other field. Unticking and saving leaves the entry with no note.
+  const [manualNoteEnabled, setManualNoteEnabled] = useState(false);
   // Fetch-source switch for the initial parse:
   //   "tmdb"    (default) — TMDB search, with OMDb fallback server-side
   //   "mdl"     — MDL is the primary source for everything except poster/
@@ -210,6 +216,7 @@ export default function AdminPage() {
   const handleEdit = (movie: Movie) => {
     setSelectedMovie({ ...movie });
     setTmdbUrl("");
+    setEditNoteEnabled(!!(movie as any).note);
     onOpen();
   };
 
@@ -449,6 +456,7 @@ export default function AdminPage() {
     setSelectedMergeId(null);
     setTmdbCandidates([]);
     setTmdbPickerOpen(false);
+    setManualNoteEnabled(false);
 
     try {
       const result = await movieApi.parseManual(
@@ -985,6 +993,33 @@ export default function AdminPage() {
         </div>
         </div>
 
+        <div className="p-3 rounded-xl bg-white/5 border border-white/10 space-y-3">
+        <Checkbox
+        size="sm"
+        isSelected={manualNoteEnabled}
+        onValueChange={(checked) => {
+          setManualNoteEnabled(checked);
+          if (!checked) {
+            // Unticking clears the draft text too — re-ticking starts fresh
+            // rather than restoring stale text from a previous tick.
+            setManualPreview((prev: any) => ({ ...prev, note: "" }));
+          }
+        }}
+        classNames={{ label: "text-xs font-bold uppercase tracking-widest text-white/60" }}
+        >
+        Add a note for this entry
+        </Checkbox>
+        {manualNoteEnabled && (
+          <Textarea
+          placeholder="e.g. Episode 8 is missing audio sync, re-uploading soon…"
+          value={manualPreview.note || ""}
+          onValueChange={(v) => setManualPreview({ ...manualPreview, note: v })}
+          minRows={2}
+          classNames={{ inputWrapper: "bg-white/5 border border-white/10 hover:border-white/20 focus-within:!border-brand/50", input: "text-sm text-white/80 placeholder:text-white/20" }}
+          />
+        )}
+        </div>
+
         <div className="flex gap-2 items-center p-3 rounded-xl bg-white/5 border border-white/10">
         <div className="flex-1">
         <Input variant="underlined" placeholder="Wrong TMDB result? Paste TMDB URL to override… e.g. https://www.themoviedb.org/movie/550" value={manualTmdbUrl} onValueChange={setManualTmdbUrl} classNames={{ input: "text-sm text-white/70 placeholder:text-white/20" }} startContent={<Wand2 className="w-4 h-4 text-brand shrink-0" />} onKeyDown={(e) => e.key === "Enter" && handleManualTmdbOverride()} />
@@ -1257,6 +1292,29 @@ export default function AdminPage() {
         <Input label="Director" variant="bordered" placeholder="e.g. Christopher Nolan" value={selectedMovie.director || ""} onValueChange={(v) => setSelectedMovie({...selectedMovie, director: v})} />
         </div>
         <Input label="Status" variant="bordered" placeholder="e.g. Released, Ended, Returning Series" value={selectedMovie.status || ""} onValueChange={(v) => setSelectedMovie({...selectedMovie, status: v})} />
+
+        <div className="space-y-3">
+        <Checkbox
+        size="sm"
+        isSelected={editNoteEnabled}
+        onValueChange={(checked) => {
+          setEditNoteEnabled(checked);
+          if (!checked) setSelectedMovie({ ...selectedMovie, note: "" });
+        }}
+        classNames={{ label: "text-xs font-bold uppercase tracking-widest text-white/60" }}
+        >
+        Add a note for this entry
+        </Checkbox>
+        {editNoteEnabled && (
+          <Textarea
+          placeholder="e.g. Episode 8 is missing audio sync, re-uploading soon…"
+          variant="bordered"
+          minRows={2}
+          value={selectedMovie.note || ""}
+          onValueChange={(v) => setSelectedMovie({ ...selectedMovie, note: v })}
+          />
+        )}
+        </div>
 
         <div className="space-y-3">
         <div className="flex justify-between items-center">

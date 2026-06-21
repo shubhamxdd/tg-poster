@@ -54,6 +54,10 @@ const movieSchema = new mongoose.Schema({
     type: String,
     default: '',
   },
+  note: {
+    type: String,
+    default: '',
+  },
   rating: String,
   runtime: String,
   status: String,

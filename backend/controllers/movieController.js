@@ -867,6 +867,12 @@ export const saveManual = async (req, res) => {
         const isEmpty = cur === null || cur === undefined || cur === '' || (Array.isArray(cur) && cur.length === 0);
         if (isEmpty && movieData[f]) metaUpdate[f] = movieData[f];
       }
+      // note: unlike the metaFields above, an explicitly-set note ALWAYS
+      // overwrites (it's a deliberate one-off annotation for this update,
+      // not a passive "fill if missing" field like poster/rating). If the
+      // admin didn't tick the note checkbox this time, movieData.note is
+      // undefined/empty and the existing note is left untouched.
+      if (movieData.note) metaUpdate.note = movieData.note;
       // Merge audio without duplicates
       const mergedAudio = [...new Set([...(existingMovie.audio || []), ...(movieData.audio || [])])];
       if (mergedAudio.length) metaUpdate.audio = mergedAudio;

@@ -34,6 +34,7 @@ import {
   Tv2,
   Sparkles,
   ShieldCheck,
+  StickyNote,
 } from "lucide-react";
 
 import { detailCache } from "@/lib/movieDetailCache";
@@ -418,6 +419,13 @@ export default function MovieDetailPage() {
     <div className="container mx-auto px-4 md:px-8 lg:px-16 py-12 grid grid-cols-1 lg:grid-cols-3 gap-10 lg:gap-16">
     {/* LEFT — Downloads + Cast */}
     <div className="lg:col-span-2 space-y-14">
+
+    {movie.note && (
+      <div className="flex items-start gap-3 p-4 rounded-xl bg-yellow-500/10 border border-yellow-500/25">
+      <StickyNote className="w-5 h-5 text-yellow-500 shrink-0 mt-0.5" />
+      <p className="text-sm text-yellow-100/80 leading-relaxed whitespace-pre-wrap">{movie.note}</p>
+      </div>
+    )}
 
     <section id="downloads">
     <div className="flex items-center gap-4 mb-8">

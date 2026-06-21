@@ -38,6 +38,7 @@ export type Movie = {
   director?: string;
   cast?: Cast[];
   imdbId?: string;
+  note?: string;
   telegramMsgId: number;
   addedAt: string;
 };
