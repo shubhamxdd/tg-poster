@@ -17,7 +17,6 @@ import {
   Select,
   SelectItem,
   Chip,
-  Switch,
 } from "@heroui/react";
 import {
   Edit, Trash2, Lock, LayoutDashboard, ExternalLink, Plus, X,
@@ -49,21 +48,23 @@ export default function AdminPage() {
   const [manualSaving, setManualSaving] = useState(false);
   const [manualSaved, setManualSaved] = useState(false);
   const [manualEditMode, setManualEditMode] = useState(false);
-  // Fetch-source switch for the initial parse: "tmdb" (default, with OMDb
-  // fallback server-side) or "mdl" (skips TMDB/OMDb entirely, fetches from
-  // the MDL link pasted below instead). Separate from the post-parse
-  // override boxes (manualTmdbUrl/manualMdlUrl etc.), which patch an
-  // already-parsed preview rather than choosing the source up front.
-  const [manualSource, setManualSource] = useState<"tmdb" | "mdl">("tmdb");
+  // Fetch-source switch for the initial parse:
+  //   "tmdb"    (default) — TMDB search, with OMDb fallback server-side
+  //   "mdl"     — MDL is the primary source for everything except poster/
+  //               backdrop, which still come from an auto-searched TMDB match
+  //   "anilist" — AniList is the primary source for everything except
+  //               title/poster/backdrop, which come from an auto-searched
+  //               TMDB match (better English titles + cleaner art for anime)
+  // Separate from the post-parse override boxes (manualTmdbUrl/manualImdbUrl),
+  // which patch an already-parsed preview rather than choosing the source
+  // up front.
+  const [manualSource, setManualSource] = useState<"tmdb" | "mdl" | "anilist">("tmdb");
   const [manualSourceMdlUrl, setManualSourceMdlUrl] = useState("");
+  const [manualSourceAnilistUrl, setManualSourceAnilistUrl] = useState("");
   const [manualTmdbUrl, setManualTmdbUrl] = useState("");
   const [manualTmdbLoading, setManualTmdbLoading] = useState(false);
   const [manualImdbUrl, setManualImdbUrl] = useState("");
   const [manualImdbLoading, setManualImdbLoading] = useState(false);
-  const [manualMdlUrl, setManualMdlUrl] = useState("");
-  const [manualMdlLoading, setManualMdlLoading] = useState(false);
-  const [manualAnilistUrl, setManualAnilistUrl] = useState("");
-  const [manualAnilistLoading, setManualAnilistLoading] = useState(false);
 
   const [existingMatches, setExistingMatches] = useState<Movie[]>([]);
   const [selectedMergeId, setSelectedMergeId] = useState<string | "NEW" | null>(null);
@@ -453,7 +454,8 @@ export default function AdminPage() {
       const result = await movieApi.parseManual(
         manualText,
         password,
-        manualSource === "mdl" ? manualSourceMdlUrl.trim() : undefined
+        manualSource === "mdl" ? manualSourceMdlUrl.trim() : undefined,
+        manualSource === "anilist" ? manualSourceAnilistUrl.trim() : undefined
       );
       const parsedData = result.data;
 
@@ -486,14 +488,23 @@ export default function AdminPage() {
     setTmdbPickerLoading(true);
     try {
       const details = await movieApi.fetchTmdbById(candidate.tmdbId, candidate.tmdbType, password);
-      // In MDL source mode, TMDB only ever contributes poster/backdrop —
-      // picking a different candidate here should re-apply just those, not
-      // overwrite the title/rating/cast/description/etc. that MDL already
-      // supplied for this preview.
+      // In MDL/AniList source mode, TMDB only ever contributes a subset of
+      // fields — picking a different candidate here should re-apply just
+      // that subset, not overwrite the rest of what MDL/AniList supplied.
       if (manualSource === "mdl") {
+        // MDL mode: TMDB contributes poster/backdrop only (title stays MDL's)
         setManualPreview((prev: any) => ({
           ...prev,
           tmdbId: details.tmdbId,
+          poster: details.poster || prev.poster,
+          backdrop: details.backdrop || prev.backdrop,
+        }));
+      } else if (manualSource === "anilist") {
+        // AniList mode: TMDB contributes title/poster/backdrop
+        setManualPreview((prev: any) => ({
+          ...prev,
+          tmdbId: details.tmdbId,
+          title: details.title || prev.title,
           poster: details.poster || prev.poster,
           backdrop: details.backdrop || prev.backdrop,
         }));
@@ -630,85 +641,6 @@ export default function AdminPage() {
       alert(error.response?.data?.message || "Failed to fetch from OMDb");
     } finally {
       setManualImdbLoading(false);
-    }
-  };
-
-  /**
-   * Override for Korean/Asian dramas and films that TMDB/OMDb often can't
-   * find under their native or alternate title. Pasting a MyDramaList URL
-   * fetches via the unofficial Kuryana scraper API (MDL has no official
-   * public API).
-   *
-   * Unlike the TMDB/IMDb overrides, this is a SELECTIVE patch, not a full
-   * replace — TMDB is treated as the source of truth for `title`, `poster`,
-   * and `type`, since those are usually already correct from the initial
-   * TMDB match and MDL's localized title/poster aren't what we want showing
-   * in the catalog. MDL fills in: originalTitle, runtime, rating, year,
-   * cast, status, description, genre, country — plus director, but only
-   * if MDL actually has one (otherwise TMDB's director is left as-is).
-   */
-  const handleManualMdlOverride = async () => {
-    if (!manualMdlUrl.trim() || !manualPreview) return;
-    setManualMdlLoading(true);
-    try {
-      const data = await movieApi.fetchFromMdl(manualMdlUrl.trim(), password);
-      setManualPreview((prev: any) => ({
-        ...prev,
-        ...(data.originalTitle && { originalTitle: data.originalTitle }),
-        ...(data.runtime     && { runtime:        data.runtime }),
-        ...(data.rating      && { rating:         data.rating }),
-        ...(data.year        && { year:           data.year }),
-        ...(data.cast?.length   && { cast:  data.cast }),
-        ...(data.status      && { status:        data.status }),
-        ...(data.description && { description:    data.description }),
-        ...(data.genre?.length  && { genre: data.genre }),
-        ...(data.country     && { country:       data.country }),
-        // director: only override if MDL actually found one — otherwise keep TMDB's
-        ...(data.director    && { director:       data.director }),
-      }));
-      setManualMdlUrl("");
-    } catch (error: any) {
-      alert(error.response?.data?.message || "Failed to fetch from MyDramaList");
-    } finally {
-      setManualMdlLoading(false);
-    }
-  };
-
-  /**
-   * Override for anime, since TMDB's /tv endpoint is often a poor fit
-   * (wrong episode counts/art, missing native titles, weird season
-   * splitting). Pasting an AniList URL fetches via AniList's official
-   * public GraphQL API (no key required).
-   *
-   * Replaces everything EXCEPT `poster` and `backdrop` — TMDB's artwork is
-   * kept since it's generally cleaner/higher-res than AniList's cover art
-   * for titles that already have a TMDB match.
-   */
-  const handleManualAnilistOverride = async () => {
-    if (!manualAnilistUrl.trim() || !manualPreview) return;
-    setManualAnilistLoading(true);
-    try {
-      const data = await movieApi.fetchFromAnilist(manualAnilistUrl.trim(), password);
-      setManualPreview((prev: any) => ({
-        ...prev,
-        ...(data.title         && { title:          data.title }),
-        ...(data.originalTitle && { originalTitle: data.originalTitle }),
-        ...(data.rating        && { rating:         data.rating }),
-        ...(data.runtime       && { runtime:        data.runtime }),
-        ...(data.status        && { status:         data.status }),
-        ...(data.country       && { country:        data.country }),
-        ...(data.director      && { director:       data.director }),
-        ...(data.year          && { year:           data.year }),
-        ...(data.description   && { description:    data.description }),
-        ...(data.genre?.length  && { genre: data.genre }),
-        ...(data.cast?.length   && { cast:  data.cast }),
-        ...(data.type           && { type:  data.type }),
-      }));
-      setManualAnilistUrl("");
-    } catch (error: any) {
-      alert(error.response?.data?.message || "Failed to fetch from AniList");
-    } finally {
-      setManualAnilistLoading(false);
     }
   };
 
@@ -880,19 +812,30 @@ export default function AdminPage() {
       classNames={{ inputWrapper: "bg-white/5 border border-white/10 hover:border-white/20 focus-within:!border-brand/50 font-mono", input: "text-sm text-white/80 placeholder:text-white/15 leading-relaxed" }}
       />
 
-      <div className="flex items-center gap-3 p-3 rounded-xl bg-white/5 border border-white/10">
-      <Film className={`w-4 h-4 shrink-0 transition-colors ${manualSource === "tmdb" ? "text-brand" : "text-white/30"}`} />
-      <span className={`text-xs font-bold uppercase tracking-widest transition-colors ${manualSource === "tmdb" ? "text-white/80" : "text-white/30"}`}>TMDB</span>
-      <Switch
-      size="sm"
-      isSelected={manualSource === "mdl"}
-      onValueChange={(checked) => setManualSource(checked ? "mdl" : "tmdb")}
-      classNames={{ wrapper: "group-data-[selected=true]:bg-brand" }}
-      />
-      <span className={`text-xs font-bold uppercase tracking-widest transition-colors ${manualSource === "mdl" ? "text-white/80" : "text-white/30"}`}>MDL</span>
-      <Tv className={`w-4 h-4 shrink-0 transition-colors ${manualSource === "mdl" ? "text-brand" : "text-white/30"}`} />
-      <span className="text-[11px] text-white/30 ml-1">Fetch source for the initial parse</span>
+      <div className="flex items-center gap-2 p-1.5 rounded-xl bg-white/5 border border-white/10">
+      <button
+      type="button"
+      onClick={() => setManualSource("tmdb")}
+      className={`flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-xs font-bold uppercase tracking-widest transition-all ${manualSource === "tmdb" ? "bg-brand text-white" : "text-white/40 hover:text-white/70 hover:bg-white/5"}`}
+      >
+      <Film className="w-3.5 h-3.5" /> TMDB
+      </button>
+      <button
+      type="button"
+      onClick={() => setManualSource("mdl")}
+      className={`flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-xs font-bold uppercase tracking-widest transition-all ${manualSource === "mdl" ? "bg-brand text-white" : "text-white/40 hover:text-white/70 hover:bg-white/5"}`}
+      >
+      <Tv className="w-3.5 h-3.5" /> MDL
+      </button>
+      <button
+      type="button"
+      onClick={() => setManualSource("anilist")}
+      className={`flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-xs font-bold uppercase tracking-widest transition-all ${manualSource === "anilist" ? "bg-brand text-white" : "text-white/40 hover:text-white/70 hover:bg-white/5"}`}
+      >
+      <Sparkles className="w-3.5 h-3.5" /> AniList
+      </button>
       </div>
+      <p className="text-[11px] text-white/30 -mt-1">Fetch source for the initial parse</p>
 
       {manualSource === "mdl" && (
         <Input
@@ -905,7 +848,26 @@ export default function AdminPage() {
         />
       )}
 
-      <Button onPress={handleManualParse} isLoading={manualParsing} isDisabled={!manualText.trim() || (manualSource === "mdl" && !manualSourceMdlUrl.trim())} className="bg-brand text-white font-bold px-8" startContent={!manualParsing && <Cpu className="w-4 h-4" />}>
+      {manualSource === "anilist" && (
+        <Input
+        variant="underlined"
+        placeholder="Paste AniList URL to fetch from… e.g. https://anilist.co/anime/16498"
+        value={manualSourceAnilistUrl}
+        onValueChange={setManualSourceAnilistUrl}
+        classNames={{ input: "text-sm text-white/70 placeholder:text-white/20" }}
+        startContent={<Sparkles className="w-4 h-4 text-brand shrink-0" />}
+        />
+      )}
+
+      <Button
+      onPress={handleManualParse}
+      isLoading={manualParsing}
+      isDisabled={
+        !manualText.trim() ||
+        (manualSource === "mdl" && !manualSourceMdlUrl.trim()) ||
+        (manualSource === "anilist" && !manualSourceAnilistUrl.trim())
+      }
+      className="bg-brand text-white font-bold px-8" startContent={!manualParsing && <Cpu className="w-4 h-4" />}>
       {manualParsing ? "Parsing…" : "Parse Message"}
       </Button>
       </div>
@@ -1040,20 +1002,6 @@ export default function AdminPage() {
         <Input variant="underlined" placeholder="No TMDB/OMDb result? Paste IMDb URL to fetch… e.g. https://www.imdb.com/title/tt1234567" value={manualImdbUrl} onValueChange={setManualImdbUrl} classNames={{ input: "text-sm text-white/70 placeholder:text-white/20" }} startContent={<Film className="w-4 h-4 text-brand shrink-0" />} onKeyDown={(e) => e.key === "Enter" && handleManualImdbOverride()} />
         </div>
         <Button size="sm" className="bg-brand text-white font-bold shrink-0 px-4" isLoading={manualImdbLoading} isDisabled={!manualImdbUrl.trim()} onPress={handleManualImdbOverride}>Re-fetch</Button>
-        </div>
-
-        <div className="flex gap-2 items-center p-3 rounded-xl bg-white/5 border border-white/10">
-        <div className="flex-1">
-        <Input variant="underlined" placeholder="Paste MyDramaList URL to fill rating, cast, status, runtime…" value={manualMdlUrl} onValueChange={setManualMdlUrl} classNames={{ input: "text-sm text-white/70 placeholder:text-white/20" }} startContent={<Tv className="w-4 h-4 text-brand shrink-0" />} onKeyDown={(e) => e.key === "Enter" && handleManualMdlOverride()} />
-        </div>
-        <Button size="sm" className="bg-brand text-white font-bold shrink-0 px-4" isLoading={manualMdlLoading} isDisabled={!manualMdlUrl.trim()} onPress={handleManualMdlOverride}>Re-fetch</Button>
-        </div>
-
-        <div className="flex gap-2 items-center p-3 rounded-xl bg-white/5 border border-white/10">
-        <div className="flex-1">
-        <Input variant="underlined" placeholder="Anime? Paste AniList URL to replace… e.g. https://anilist.co/anime/16498" value={manualAnilistUrl} onValueChange={setManualAnilistUrl} classNames={{ input: "text-sm text-white/70 placeholder:text-white/20" }} startContent={<Sparkles className="w-4 h-4 text-brand shrink-0" />} onKeyDown={(e) => e.key === "Enter" && handleManualAnilistOverride()} />
-        </div>
-        <Button size="sm" className="bg-brand text-white font-bold shrink-0 px-4" isLoading={manualAnilistLoading} isDisabled={!manualAnilistUrl.trim()} onPress={handleManualAnilistOverride}>Re-fetch</Button>
         </div>
 
         {/* ── Link Type Selector (series/anime only) ──────────────────────── */}

@@ -566,7 +566,7 @@ export const fetchTmdbById = async (req, res) => {
  * 3. Returns the preview data — does NOT save to DB.
  */
 export const parseManual = async (req, res) => {
-  const { text, mdlUrl } = req.body;
+  const { text, mdlUrl, anilistUrl } = req.body;
   if (!text || !text.trim()) {
     return res.status(400).json({ message: 'text body field is required' });
   }
@@ -601,14 +601,43 @@ export const parseManual = async (req, res) => {
     let tmdbDetails   = null;
     let tmdbCandidates = [];
 
-    // Step 3: Source switch — when an MDL link is pasted alongside the message,
-    // MDL becomes the primary source for everything, including title (cleaned
-    // of its trailing "(YYYY)" year suffix), EXCEPT poster/backdrop, which
-    // still come from an auto-searched TMDB match (TMDB's art is generally
-    // cleaner than MDL's cover image). TMDB/OMDb's usual full-detail fetch
-    // (rating, cast, etc.) is skipped in this mode — only poster/backdrop
-    // are pulled from TMDB.
+    /**
+     * Searches TMDB by the parsed title and auto-picks the best candidate
+     * (single result -> use it; multiple -> prefer a year match). Shared by
+     * MDL mode and AniList mode, which both fall back to TMDB for some
+     * subset of fields rather than doing TMDB's own full-detail fetch.
+     * Populates the outer `tmdbCandidates` so the admin can still override
+     * the auto-pick via the existing picker UI.
+     */
+    const fetchTmdbArtMatch = async () => {
+      tmdbCandidates = await searchTMDBCandidates(parsed.title, parsed.type, parsed.year);
+
+      let tmdbPick = null;
+      if (tmdbCandidates.length === 1) {
+        tmdbPick = tmdbCandidates[0];
+      } else if (tmdbCandidates.length > 1) {
+        const yearMatch = parsed.year
+          ? tmdbCandidates.find(c => c.year === parsed.year)
+          : null;
+        tmdbPick = yearMatch || tmdbCandidates[0];
+      }
+
+      if (!tmdbPick) return null;
+      return await fetchFullDetailsByTMDBId(tmdbPick.tmdbId, tmdbPick.tmdbType);
+    };
+
+    // Step 3: Source switch for the initial fetch.
+    //   "tmdb"    (default) — TMDB search, with OMDb fallback if no match
+    //   "mdl"     — MDL is the primary source for everything (including
+    //               title, cleaned of its trailing "(YYYY)") EXCEPT
+    //               poster/backdrop, which come from an auto-searched TMDB match
+    //   "anilist" — AniList is the primary source for everything EXCEPT
+    //               title/poster/backdrop, which come from an auto-searched
+    //               TMDB match (TMDB's English titles/art are generally
+    //               cleaner than AniList's for these purposes)
     const mdlSlug = mdlUrl ? extractMdlSlug(mdlUrl) : null;
+    const anilistId = anilistUrl ? extractAnilistId(anilistUrl) : null;
+
     if (mdlSlug) {
       try {
         const mdlDetails = await fetchFullDetailsByMdlSlug(mdlSlug);
@@ -620,56 +649,50 @@ export const parseManual = async (req, res) => {
         console.warn('[ManualParser] MDL fetch failed (non-fatal):', mdlErr.message);
       }
 
-      // Auto-search TMDB for poster/backdrop only — title stays MDL-sourced
-      // (already cleaned of its trailing year), everything else stays
-      // MDL-sourced from above too.
       try {
-        tmdbCandidates = await searchTMDBCandidates(parsed.title, parsed.type, parsed.year);
-
-        let tmdbPick = null;
-        if (tmdbCandidates.length === 1) {
-          tmdbPick = tmdbCandidates[0];
-        } else if (tmdbCandidates.length > 1) {
-          const yearMatch = parsed.year
-            ? tmdbCandidates.find(c => c.year === parsed.year)
-            : null;
-          tmdbPick = yearMatch || tmdbCandidates[0];
-        }
-
-        if (tmdbPick) {
-          const tmdbArt = await fetchFullDetailsByTMDBId(tmdbPick.tmdbId, tmdbPick.tmdbType);
-          if (tmdbArt) {
-            tmdbDetails = {
-              ...(tmdbDetails || {}),
-              tmdbId: tmdbArt.tmdbId,
-              poster: tmdbArt.poster || null,
-              backdrop: tmdbArt.backdrop || null,
-            };
-            console.log(`[ManualParser] MDL mode — TMDB art applied: ${tmdbArt.title} (${tmdbArt.tmdbId})`);
-          }
+        const tmdbArt = await fetchTmdbArtMatch();
+        if (tmdbArt) {
+          tmdbDetails = {
+            ...(tmdbDetails || {}),
+            tmdbId: tmdbArt.tmdbId,
+            poster: tmdbArt.poster || null,
+            backdrop: tmdbArt.backdrop || null,
+          };
+          console.log(`[ManualParser] MDL mode — TMDB art applied: ${tmdbArt.title} (${tmdbArt.tmdbId})`);
         }
       } catch (tmdbArtErr) {
         console.warn('[ManualParser] MDL mode — TMDB art lookup failed (non-fatal):', tmdbArtErr.message);
       }
+    } else if (anilistId) {
+      try {
+        const anilistDetails = await fetchFullDetailsByAnilistId(anilistId);
+        if (anilistDetails) {
+          tmdbDetails = anilistDetails;
+          console.log(`[ManualParser] AniList source selected: ${anilistDetails.title} (${anilistId})`);
+        }
+      } catch (anilistErr) {
+        console.warn('[ManualParser] AniList fetch failed (non-fatal):', anilistErr.message);
+      }
+
+      try {
+        const tmdbArt = await fetchTmdbArtMatch();
+        if (tmdbArt) {
+          tmdbDetails = {
+            ...(tmdbDetails || {}),
+            tmdbId: tmdbArt.tmdbId,
+            title: tmdbArt.title || tmdbDetails?.title || null,
+            poster: tmdbArt.poster || null,
+            backdrop: tmdbArt.backdrop || null,
+          };
+          console.log(`[ManualParser] AniList mode — TMDB title/art applied: ${tmdbArt.title} (${tmdbArt.tmdbId})`);
+        }
+      } catch (tmdbArtErr) {
+        console.warn('[ManualParser] AniList mode — TMDB art lookup failed (non-fatal):', tmdbArtErr.message);
+      }
     } else {
       // Step 3a: TMDB enrichment — fetch top result AND all candidates
       try {
-        // Get candidates list first (cheap)
-        tmdbCandidates = await searchTMDBCandidates(parsed.title, parsed.type, parsed.year);
-
-        if (tmdbCandidates.length === 1) {
-          // Only one result — auto-select it
-          tmdbDetails = await fetchFullDetailsByTMDBId(tmdbCandidates[0].tmdbId, tmdbCandidates[0].tmdbType);
-        } else if (tmdbCandidates.length > 1) {
-          // Multiple candidates — pick the best one automatically based on year match,
-          // but still return the full candidate list so admin can override
-          const yearMatch = parsed.year
-            ? tmdbCandidates.find(c => c.year === parsed.year)
-            : null;
-          const autoPickId = (yearMatch || tmdbCandidates[0]);
-          tmdbDetails = await fetchFullDetailsByTMDBId(autoPickId.tmdbId, autoPickId.tmdbType);
-        }
-
+        tmdbDetails = await fetchTmdbArtMatch();
         if (tmdbDetails) {
           console.log(`[ManualParser] TMDB found: ${tmdbDetails.title} (${tmdbDetails.tmdbId}) | ${tmdbCandidates.length} candidates`);
         }
