@@ -72,9 +72,12 @@ export default function MovieDetailPage() {
   // Derive id first — all state that depends on it must come after
   const id = useMemo(() => (slug ? extractFullIdFromSlug(slug) : ""), [slug]);
 
-  const [movie, setMovie] = useState<Movie | null>(null);
-  // Start loading=false; the fetch useEffect sets it to true when needed.
-  // This prevents a permanent black screen if id is empty or invalid.
+  // Initialise from cache synchronously so the very first render already has
+  // data when the user refreshes (sessionStorage hit) or navigates back (memory
+  // hit). Without this, the first render always sees movie=null and flashes
+  // "NOT FOUND" for one frame before the useEffect cache-read fires.
+  const [movie, setMovie] = useState<Movie | null>(() => (id ? detailCache.get(id) : null));
+  // loading=false when we have a cache hit (no spinner needed); true otherwise.
   const [loading, setLoading] = useState(false);
   const [fetchError, setFetchError] = useState(false);
   const [wishlist, setWishlist] = useState(false);

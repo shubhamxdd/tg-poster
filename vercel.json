@@ -11,18 +11,18 @@
     },
     {
       "source": "/movie/:slug",
-      "destination": "/api/index.js"
+      "destination": "/api/og.js"
     },
     {
       "source": "/series/:slug",
-      "destination": "/api/index.js"
+      "destination": "/api/og.js"
     },
     {
       "source": "/anime/:slug",
-      "destination": "/api/index.js"
+      "destination": "/api/og.js"
     },
     {
-      "source": "/((?!api|_next|favicon\\.svg|og-image\\.png|assets|.*\\..*).*)",
+      "source": "/((?!api|_next|favicon\\.svg|og-image\\.png|assets|.*\\..*).*)$",
       "destination": "/index.html"
     }
   ],

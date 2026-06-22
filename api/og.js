@@ -118,12 +118,20 @@ export default async function handler(req, res) {
       // __dirname isn't available in ESM on Vercel; use process.cwd()
       const indexPath = path.join(process.cwd(), 'client', 'dist', 'index.html');
       const html = readFileSync(indexPath, 'utf8');
-      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+      res.writeHead(200, {
+        'Content-Type': 'text/html; charset=utf-8',
+        // Allow browsers to cache the SPA shell for 5 minutes; CDN for 10 minutes.
+        // index.html itself has no dynamic content — the React app fetches data
+        // client-side. Caching this avoids the cold-start penalty on every refresh.
+        'Cache-Control': 'public, max-age=300, s-maxage=600, stale-while-revalidate=60',
+      });
       return res.end(html);
     } catch {
-      // dist not built yet (dev mode) — redirect to root so Vite handles it
-      res.writeHead(302, { Location: fullPath });
-      return res.end();
+      // dist not built yet (local dev / CI) — let the caller handle it.
+      // A redirect back to the same path would cause an infinite loop, so
+      // return a minimal HTML stub that lets Vite handle the route instead.
+      res.writeHead(503, { 'Content-Type': 'text/plain' });
+      return res.end('Build not found. Run `npm run build` in the client directory.');
     }
   }
 

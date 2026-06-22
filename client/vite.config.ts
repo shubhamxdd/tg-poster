@@ -23,6 +23,9 @@ export default defineConfig({
   },
   build: {
     minify: "esbuild",
+    // Generate <link rel="modulepreload"> for all entry chunks so the browser
+    // fetches vendor bundles in parallel with the main chunk (cuts waterfall).
+    modulePreload: { polyfill: false },
     esbuildOptions: {
       drop: ["console", "debugger"],
     },
