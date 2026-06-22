@@ -116,7 +116,7 @@ export default async function handler(req, res) {
   if (!isBot(ua)) {
     try {
       // __dirname isn't available in ESM on Vercel; use process.cwd()
-      const indexPath = path.join(process.cwd(), 'client', 'dist', 'index.html');
+      const indexPath = path.join(process.cwd(), 'dist', 'index.html');
       const html = readFileSync(indexPath, 'utf8');
       res.writeHead(200, {
         'Content-Type': 'text/html; charset=utf-8',
