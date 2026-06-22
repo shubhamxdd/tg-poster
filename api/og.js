@@ -37,6 +37,15 @@ function extractIdFromSlug(slug) {
 }
 
 async function findMovie(slug) {
+  // Enforce a hard timeout so the serverless function never hangs silently.
+  // 8s leaves headroom under Vercel's 10s default function timeout.
+  const timeout = new Promise((_, reject) =>
+    setTimeout(() => reject(new Error('DB lookup timed out')), 8000)
+  );
+  return Promise.race([_findMovieInner(slug), timeout]);
+}
+
+async function _findMovieInner(slug) {
   await connectDB();
   const parsed = extractIdFromSlug(slug);
   if (!parsed) return null;

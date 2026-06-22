@@ -13,22 +13,35 @@ const MONGO_OPTS = {
   retryReads:               true,
 };
 
+// Cache the connection promise so Vercel serverless warm instances
+// reuse the existing connection instead of reconnecting on every request.
+let connectionPromise = null;
+
 const connectDB = async () => {
-  try {
-    await mongoose.connect(process.env.MONGO_URI, MONGO_OPTS);
-    console.log(`MongoDB Connected: ${mongoose.connection.host}`);
-  } catch (error) {
-    console.error(`MongoDB initial connection failed: ${error.message}`);
-    // Retry after 5s instead of crashing
-    console.log('Retrying in 5s…');
-    setTimeout(connectDB, 5000);
-  }
+  // Already connected — nothing to do
+  if (mongoose.connection.readyState === 1) return;
+
+  // In-flight connection — wait for it instead of opening a second one
+  if (connectionPromise) return connectionPromise;
+
+  connectionPromise = mongoose
+    .connect(process.env.MONGO_URI, MONGO_OPTS)
+    .then(() => {
+      console.log(`MongoDB Connected: ${mongoose.connection.host}`);
+    })
+    .catch((error) => {
+      console.error(`MongoDB connection failed: ${error.message}`);
+      connectionPromise = null; // reset so the next request can retry
+      throw error;
+    });
+
+  return connectionPromise;
 };
 
 // Auto-reconnect on unexpected disconnects
 mongoose.connection.on('disconnected', () => {
-  console.warn('MongoDB disconnected — attempting reconnect…');
-  setTimeout(connectDB, 5000);
+  console.warn('MongoDB disconnected — will reconnect on next request');
+  connectionPromise = null;
 });
 
 mongoose.connection.on('error', (err) => {
