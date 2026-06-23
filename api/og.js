@@ -14,8 +14,6 @@
  *     The React app then does its own title update via document.title.
  */
 
-import { readFileSync } from 'fs';
-import path from 'path';
 import connectDB from '../backend/config/db.js';
 import Movie from '../backend/models/Movie.js';
 
@@ -122,39 +120,50 @@ export default async function handler(req, res) {
   const canonicalUrl = `${proto}://${host}${fullPath}`;
 
   // ── Real browser → serve the React SPA's index.html ──────────────────────
+  // On Vercel, the output directory (dist/) is deployed to the CDN and is NOT
+  // accessible via the function filesystem. We fetch index.html from our own
+  // CDN origin instead of using readFileSync.
   if (!isBot(ua)) {
     try {
-      // __dirname isn't available in ESM on Vercel; use process.cwd()
-      const indexPath = path.join(process.cwd(), 'dist', 'index.html');
-      const html = readFileSync(indexPath, 'utf8');
+      const origin = `${proto}://${host}`;
+      const spaRes = await fetch(`${origin}/index.html`);
+      if (!spaRes.ok) throw new Error(`CDN returned ${spaRes.status}`);
+      const html = await spaRes.text();
       res.writeHead(200, {
         'Content-Type': 'text/html; charset=utf-8',
-        // Allow browsers to cache the SPA shell for 5 minutes; CDN for 10 minutes.
-        // index.html itself has no dynamic content — the React app fetches data
-        // client-side. Caching this avoids the cold-start penalty on every refresh.
         'Cache-Control': 'public, max-age=300, s-maxage=600, stale-while-revalidate=60',
       });
       return res.end(html);
-    } catch {
-      // dist not built yet (local dev / CI) — let the caller handle it.
-      // A redirect back to the same path would cause an infinite loop, so
-      // return a minimal HTML stub that lets Vite handle the route instead.
-      res.writeHead(503, { 'Content-Type': 'text/plain' });
-      return res.end('Build not found. Run `npm run build` in the client directory.');
+    } catch (err) {
+      console.error('[og.js] Failed to fetch index.html:', err.message);
+      // Hard fallback — redirect browser to root; CDN will serve index.html.
+      // React Router will re-match the path on the client side.
+      res.writeHead(302, { Location: `/` });
+      return res.end();
     }
   }
 
   // ── Bot → fetch movie from DB and return OG HTML ──────────────────────────
+  // Guard: if MONGO_URI is missing, fail fast with a loggable error
+  if (!process.env.MONGO_URI) {
+    console.error('[og.js] MONGO_URI env var is not set');
+  }
+
   let movie = null;
+  let dbError = null;
   try {
     movie = await findMovie(slug);
   } catch (err) {
+    dbError = err.message;
     console.error('[og.js] DB error:', err.message);
   }
 
   if (!movie) {
+    // Include error hint in title (only visible in page source, not Telegram preview)
+    const hint = dbError ? dbError.slice(0, 80) : 'not found';
     const fallback = `<!doctype html><html><head>
   <title>CineVault — Download Movies, Series &amp; Anime</title>
+  <!-- og.js debug: ${esc(hint)} | slug: ${esc(slug)} -->
   <meta property="og:title" content="CineVault — Download Movies, Series &amp; Anime" />
   <meta property="og:description" content="Browse and download movies, series and anime in HD quality." />
   <meta property="og:image" content="${proto}://${host}/og-image.png" />

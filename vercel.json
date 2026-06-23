@@ -3,9 +3,9 @@
   "routes": [
     { "src": "/api/(.*)", "dest": "/api/index.js" },
     { "src": "/webhook", "dest": "/api/index.js" },
-    { "src": "/movie/:slug", "dest": "/api/og.js" },
-    { "src": "/series/:slug", "dest": "/api/og.js" },
-    { "src": "/anime/:slug", "dest": "/api/og.js" },
+    { "src": "/movie/(.+)", "dest": "/api/og.js" },
+    { "src": "/series/(.+)", "dest": "/api/og.js" },
+    { "src": "/anime/(.+)", "dest": "/api/og.js" },
     { "handle": "filesystem" },
     { "src": "/(.*)", "dest": "/index.html" }
   ],
