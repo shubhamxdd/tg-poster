@@ -662,8 +662,14 @@ export const parseManual = async (req, res) => {
             tmdbId: tmdbArt.tmdbId,
             poster: tmdbArt.poster || null,
             backdrop: tmdbArt.backdrop || null,
+            // Cast always comes from TMDB in MDL mode (TMDB has character
+            // names + profile photos; MDL's cast list is names only).
+            cast: tmdbArt.cast?.length ? tmdbArt.cast : (tmdbDetails?.cast || []),
+            // MDL's detail page has no structured director field — fall
+            // back to TMDB's director whenever MDL didn't supply one.
+            director: tmdbDetails?.director || tmdbArt.director || null,
           };
-          console.log(`[ManualParser] MDL mode — TMDB art applied: ${tmdbArt.title} (${tmdbArt.tmdbId})`);
+          console.log(`[ManualParser] MDL mode — TMDB art/cast${!tmdbDetails?.director && tmdbArt.director ? '/director' : ''} applied: ${tmdbArt.title} (${tmdbArt.tmdbId})`);
         }
       } catch (tmdbArtErr) {
         console.warn('[ManualParser] MDL mode — TMDB art lookup failed (non-fatal):', tmdbArtErr.message);
