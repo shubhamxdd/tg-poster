@@ -607,28 +607,81 @@ export const parseManual = async (req, res) => {
     let tmdbCandidates = [];
 
     /**
-     * Searches TMDB by the parsed title and auto-picks the best candidate
-     * (single result -> use it; multiple -> prefer a year match). Shared by
-     * MDL mode and AniList mode, which both fall back to TMDB for some
-     * subset of fields rather than doing TMDB's own full-detail fetch.
-     * Populates the outer `tmdbCandidates` so the admin can still override
-     * the auto-pick via the existing picker UI.
+     * Token-overlap title similarity, 0-1. Used to stop the TMDB auto-pick
+     * from grabbing an unrelated show when there's no year to disambiguate
+     * with — e.g. MDL mode searching a generic/common title and silently
+     * attaching a totally different show's cast.
      */
-    const fetchTmdbArtMatch = async () => {
-      tmdbCandidates = await searchTMDBCandidates(parsed.title, parsed.type, parsed.year);
+    const titleSimilarity = (a, b) => {
+      const na = normalize(a);
+      const nb = normalize(b);
+      if (!na || !nb) return 0;
+      if (na === nb) return 1;
+      if (na.length > 3 && nb.length > 3 && (na.includes(nb) || nb.includes(na))) return 0.9;
 
-      let tmdbPick = null;
-      if (tmdbCandidates.length === 1) {
-        tmdbPick = tmdbCandidates[0];
-      } else if (tmdbCandidates.length > 1) {
-        const yearMatch = parsed.year
-          ? tmdbCandidates.find(c => c.year === parsed.year)
-          : null;
-        tmdbPick = yearMatch || tmdbCandidates[0];
+      const tokensA = new Set(na.split(' ').filter(Boolean));
+      const tokensB = new Set(nb.split(' ').filter(Boolean));
+      if (!tokensA.size || !tokensB.size) return 0;
+      let shared = 0;
+      for (const t of tokensA) if (tokensB.has(t)) shared++;
+      return shared / Math.max(tokensA.size, tokensB.size);
+    };
+
+    /**
+     * Searches TMDB and auto-picks the best candidate, scored by title
+     * similarity against every available title we have for this entry (the
+     * post-parsed title, plus — when supplied — the source-of-truth title(s)
+     * from MDL/AniList, since the Telegram post text `parsed.title` is often
+     * noisier than what the actual source record says). Year match is used
+     * as a tiebreaker among similarly-titled candidates, not as the primary
+     * signal, and a candidate is only auto-applied if it clears a minimum
+     * similarity bar — otherwise we bail rather than risk attaching a
+     * same-year-but-different-show match (the previous bug: blindly taking
+     * tmdbCandidates[0] when no year matched).
+     * Shared by MDL mode, AniList mode, and the default TMDB path.
+     * Populates the outer `tmdbCandidates` so the admin can still override
+     * the auto-pick via the existing picker UI even when auto-apply bails.
+     */
+    const MIN_TITLE_SIMILARITY = 0.45;
+    const fetchTmdbArtMatch = async ({ preferredTitles, preferredYear } = {}) => {
+      const searchTitle = preferredTitles?.[0] || parsed.title;
+      const searchYear  = preferredYear ?? parsed.year;
+      tmdbCandidates = await searchTMDBCandidates(searchTitle, parsed.type, searchYear);
+
+      if (!tmdbCandidates.length) return null;
+
+      // Every title we can compare a candidate against — source-of-truth
+      // title(s) first (when given), then the post-text parsed title.
+      const refTitles = [...(preferredTitles || []), parsed.title].filter(Boolean);
+
+      const scored = tmdbCandidates.map(c => {
+        const bestSim = Math.max(
+          0,
+          ...refTitles.flatMap(ref => [
+            titleSimilarity(ref, c.title),
+            titleSimilarity(ref, c.originalTitle),
+          ])
+        );
+        const yearHit = searchYear && c.year === searchYear;
+        return { c, bestSim, yearHit };
+      });
+
+      // Prefer the highest title similarity; among near-ties (within 0.05),
+      // prefer the one with a year hit.
+      scored.sort((x, y) => {
+        if (Math.abs(x.bestSim - y.bestSim) > 0.05) return y.bestSim - x.bestSim;
+        return (y.yearHit ? 1 : 0) - (x.yearHit ? 1 : 0);
+      });
+
+      const best = scored[0];
+      if (!best || best.bestSim < MIN_TITLE_SIMILARITY) {
+        console.warn(
+          `[ManualParser] TMDB art match rejected — best candidate "${best?.c?.title}" only scored ${best?.bestSim?.toFixed(2) ?? 0} similarity against "${searchTitle}" (min ${MIN_TITLE_SIMILARITY}). Leaving art/cast unset; admin can pick manually from candidates.`
+        );
+        return null;
       }
 
-      if (!tmdbPick) return null;
-      return await fetchFullDetailsByTMDBId(tmdbPick.tmdbId, tmdbPick.tmdbType);
+      return await fetchFullDetailsByTMDBId(best.c.tmdbId, best.c.tmdbType);
     };
 
     // Step 3: Source switch for the initial fetch.
@@ -655,7 +708,10 @@ export const parseManual = async (req, res) => {
       }
 
       try {
-        const tmdbArt = await fetchTmdbArtMatch();
+        const tmdbArt = await fetchTmdbArtMatch({
+          preferredTitles: [tmdbDetails?.title, tmdbDetails?.originalTitle].filter(Boolean),
+          preferredYear: tmdbDetails?.year ?? undefined,
+        });
         if (tmdbArt) {
           tmdbDetails = {
             ...(tmdbDetails || {}),
@@ -670,6 +726,8 @@ export const parseManual = async (req, res) => {
             director: tmdbDetails?.director || tmdbArt.director || null,
           };
           console.log(`[ManualParser] MDL mode — TMDB art/cast${!tmdbDetails?.director && tmdbArt.director ? '/director' : ''} applied: ${tmdbArt.title} (${tmdbArt.tmdbId})`);
+        } else {
+          console.warn(`[ManualParser] MDL mode — no sufficiently-confident TMDB match for "${tmdbDetails?.title}"; keeping MDL poster/cast, leaving tmdbId unset. Admin can pick from candidates manually.`);
         }
       } catch (tmdbArtErr) {
         console.warn('[ManualParser] MDL mode — TMDB art lookup failed (non-fatal):', tmdbArtErr.message);
@@ -686,7 +744,10 @@ export const parseManual = async (req, res) => {
       }
 
       try {
-        const tmdbArt = await fetchTmdbArtMatch();
+        const tmdbArt = await fetchTmdbArtMatch({
+          preferredTitles: [tmdbDetails?.title, tmdbDetails?.originalTitle].filter(Boolean),
+          preferredYear: tmdbDetails?.year ?? undefined,
+        });
         if (tmdbArt) {
           tmdbDetails = {
             ...(tmdbDetails || {}),
