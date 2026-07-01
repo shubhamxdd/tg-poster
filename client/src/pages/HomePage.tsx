@@ -66,6 +66,7 @@ export default function HomePage() {
         search: searchParams.get("search") || undefined,
         sortBy: searchParams.get("sortBy") || "addedAt",
         page: currentPage,
+        limit: 18,
       });
       setCapped(movieCache, cacheKey, {
         movies: data.movies,
@@ -432,4 +433,3 @@ function MovieCard({ movie }: { movie: Movie }) {
     </Link>
   );
 }
-
